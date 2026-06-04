@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>CrownRecord</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>CrownRecord</h1>
+    <p class="tagline">by Crown Softech · free recorder for meetings &amp; demos</p>
+  </header>
+
+  <section class="panel meetings-panel">
+    <h2 class="meetings-title">Zoom &amp; Google Meet</h2>
+    <p class="meetings-copy">
+      Pick the <strong>★ meeting window</strong> below (Zoom Meeting, Chrome, Teams).
+      Enable <strong>Computer audio</strong> to capture other speakers — no paid Zoom/Meet cloud recording required.
+    </p>
+  </section>
+
+  <section class="panel">
+    <label class="label" for="source-select">Capture source</label>
+    <select id="source-select" disabled>
+      <option value="">Loading sources…</option>
+    </select>
+    <button type="button" id="refresh-sources" class="btn secondary">Refresh</button>
+  </section>
+
+  <section class="panel audio-panel">
+    <div class="panel-head">
+      <h2>Audio</h2>
+    </div>
+    <label class="toggle-label">
+      <input type="checkbox" id="mic-enabled" checked />
+      <span>Microphone (your voice)</span>
+    </label>
+    <label class="label" for="mic-select">Mic device</label>
+    <select id="mic-select">
+      <option value="">Default microphone</option>
+    </select>
+    <label class="toggle-label audio-toggle-second">
+      <input type="checkbox" id="system-audio-enabled" checked />
+      <span>Computer audio (apps, tabs, system sounds)</span>
+    </label>
+    <p class="audio-hint">Windows captures system audio with the selected screen/window source.</p>
+  </section>
+
+  <section class="panel camera-panel">
+    <div class="panel-head">
+      <h2>Camera</h2>
+      <label class="toggle-label">
+        <input type="checkbox" id="camera-enabled" />
+        <span>Webcam bubble</span>
+      </label>
+    </div>
+    <label class="label" for="camera-select">Device</label>
+    <select id="camera-select" disabled>
+      <option value="">Enable camera to list devices</option>
+    </select>
+    <label class="slider-inline">
+      Bubble size <span id="bubble-size-val">200</span>px
+      <input type="range" id="bubble-size" min="120" max="320" value="200" />
+    </label>
+    <label class="label" for="bubble-corner">Position</label>
+    <select id="bubble-corner">
+      <option value="bl">Bottom left (Loom style)</option>
+      <option value="br">Bottom right</option>
+    </select>
+  </section>
+
+  <section class="panel preview-panel">
+    <video id="preview" muted playsinline></video>
+    <canvas id="compose-canvas" hidden aria-hidden="true"></canvas>
+    <p id="preview-hint" class="hint">Select a window or screen, then start recording.</p>
+  </section>
+
+  <section class="panel controls-row">
+    <button type="button" id="record-btn" class="btn primary" disabled>Start recording</button>
+    <button type="button" id="stop-btn" class="btn danger" disabled>Stop</button>
+  </section>
+
+  <section class="panel teleprompter-panel">
+    <div class="panel-head">
+      <h2>Teleprompter</h2>
+      <button type="button" id="toggle-prompter" class="btn secondary">Open overlay</button>
+    </div>
+    <textarea id="script-text" rows="8" placeholder="Paste your pitch script here…"></textarea>
+
+    <div class="sliders">
+      <label>
+        Font size <span id="font-size-val">28</span>px
+        <input type="range" id="font-size" min="16" max="56" value="28" />
+      </label>
+      <label>
+        Scroll speed <span id="scroll-speed-val">40</span>
+        <input type="range" id="scroll-speed" min="10" max="120" value="40" />
+      </label>
+    </div>
+
+    <div class="prompter-actions">
+      <button type="button" id="scroll-play" class="btn secondary">Play scroll</button>
+      <button type="button" id="scroll-pause" class="btn secondary">Pause</button>
+      <button type="button" id="scroll-reset" class="btn secondary">Reset</button>
+    </div>
+  </section>
+
+  <section class="panel support-panel">
+    <h2 class="meetings-title">Help</h2>
+    <p class="support-copy">
+      Support: <a href="mailto:support@crownsoftech.com">support@crownsoftech.com</a><br />
+      <button type="button" id="open-logs" class="btn secondary btn-small">Open log folder</button>
+      <span id="log-path" class="log-path"></span>
+    </p>
+  </section>
+
+  <p id="status" class="status" role="status"></p>
+
+  <script src="recorder.js"></script>
+</body>
+</html>

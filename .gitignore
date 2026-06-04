@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.webm
+*.exe
+*.blockmap
+*.yml
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*

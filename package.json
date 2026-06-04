@@ -1,0 +1,58 @@
+{
+  "name": "crownrecord",
+  "version": "0.3.0",
+  "description": "CrownRecord — free Windows screen recorder by Crown Softech",
+  "main": "main.js",
+  "author": "Crown Softech <support@crownsoftech.com>",
+  "homepage": "https://crownsoftech.com/crownrecord",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.crownsoftech.crownrecord",
+    "productName": "CrownRecord",
+    "copyright": "Copyright © Crown Softech",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "logger.js",
+      "preload-*.js",
+      "*.html",
+      "*.css",
+      "recorder.js",
+      "teleprompter.js",
+      "hud.js"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"],
+          "artifactName": "CrownRecord-${version}-Setup.${ext}"
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"],
+          "artifactName": "CrownRecord-${version}-Portable.${ext}"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "CrownRecord"
+    }
+  }
+}
