@@ -1,6 +1,6 @@
 {
   "name": "crownrecord",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "CrownRecord — free Windows screen recorder by Crown Softech",
   "main": "main.js",
   "author": "Crown Softech <support@crownsoftech.com>",
@@ -31,9 +31,13 @@
       "*.css",
       "recorder.js",
       "teleprompter.js",
-      "hud.js"
+      "hud.js",
+      "mirror.js",
+      "assets/**",
+      "build/icon.ico"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false,
       "target": [
         {

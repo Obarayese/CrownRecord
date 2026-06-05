@@ -4,14 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
-  <title>REC HUD</title>
+  <title>CrownRecord Controls</title>
   <link rel="stylesheet" href="hud.css" />
 </head>
 <body>
-  <div class="hud">
-    <span class="rec-dot" aria-hidden="true"></span>
-    <span class="rec-label">REC</span>
+  <div class="hud" role="toolbar" aria-label="Recording controls">
+    <span class="rec-dot" id="rec-dot" aria-hidden="true"></span>
+    <span class="rec-label" id="rec-label">REC</span>
     <span id="timer" class="timer">00:00</span>
+    <button type="button" id="pause-btn" class="hud-btn" title="Pause or resume">Pause</button>
+    <button type="button" id="stop-btn" class="hud-btn hud-btn-stop" title="Stop and save">Stop</button>
   </div>
   <script src="hud.js"></script>
 </body>

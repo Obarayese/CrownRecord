@@ -28,6 +28,14 @@ body {
   letter-spacing: -0.02em;
 }
 
+.app-logo {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  max-height: 52px;
+  margin-bottom: 6px;
+}
+
 .tagline {
   margin: 4px 0 16px;
   color: var(--muted);
@@ -161,6 +169,21 @@ body {
   accent-color: var(--accent);
   width: 16px;
   height: 16px;
+}
+
+.quality-toggle {
+  margin-top: 10px;
+}
+
+#quality-mode,
+#export-format {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  margin-bottom: 4px;
 }
 
 .audio-toggle-second {

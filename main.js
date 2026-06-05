@@ -15,8 +15,13 @@ const logger = require('./logger');
 let mainWindow = null;
 let teleprompterWindow = null;
 let hudWindow = null;
+let mirrorWindow = null;
 
 const isWindows = process.platform === 'win32';
+
+if (isWindows) {
+  app.setAppUserModelId('com.crownsoftech.crownrecord');
+}
 
 function applyCaptureExclusion(win) {
   if (!win || win.isDestroyed()) return;
@@ -24,6 +29,21 @@ function applyCaptureExclusion(win) {
   if (isWindows && typeof win.setExcludeFromCapture === 'function') {
     win.setExcludeFromCapture(true);
   }
+}
+
+function formatSourceLabel(name, isScreen, displayId) {
+  if (isScreen) {
+    const n = displayId != null && displayId !== '' ? displayId : '1';
+    return `Entire screen — Display ${n}`;
+  }
+  const lower = name.toLowerCase();
+  if (/zoom meeting/.test(lower)) return `Meeting window — ${name}`;
+  if (/zoom/.test(lower)) return `Zoom — ${name}`;
+  if (/google chrome|chrome/.test(lower)) return `Browser — ${name} (pick tab/window)`;
+  if (/microsoft teams|teams/.test(lower)) return `Teams — ${name}`;
+  if (/meet/.test(lower)) return `Meet / video — ${name}`;
+  if (/electron/.test(lower)) return `App window — ${name}`;
+  return `Application window — ${name}`;
 }
 
 function createTeleprompterWindow() {
@@ -46,6 +66,7 @@ function createTeleprompterWindow() {
     resizable: true,
     hasShadow: false,
     backgroundColor: '#00000000',
+    title: 'CrownRecord Teleprompter',
     webPreferences: {
       preload: path.join(__dirname, 'preload-teleprompter.js'),
       contextIsolation: true,
@@ -70,17 +91,18 @@ function createHudWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
 
   hudWindow = new BrowserWindow({
-    width: 200,
-    height: 72,
-    x: width - 220,
-    y: 24,
+    width: 360,
+    height: 64,
+    x: Math.max(16, width - 380),
+    y: 20,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
     hasShadow: false,
-    focusable: false,
+    focusable: true,
+    title: 'CrownRecord Controls',
     backgroundColor: '#00000000',
     webPreferences: {
       preload: path.join(__dirname, 'preload-hud.js'),
@@ -90,7 +112,6 @@ function createHudWindow() {
   });
 
   applyCaptureExclusion(hudWindow);
-  hudWindow.setIgnoreMouseEvents(true, { forward: true });
   hudWindow.loadFile('hud.html');
   hudWindow.on('closed', () => {
     hudWindow = null;
@@ -99,17 +120,76 @@ function createHudWindow() {
   return hudWindow;
 }
 
+function closeCameraMirrorWindow() {
+  if (mirrorWindow && !mirrorWindow.isDestroyed()) {
+    mirrorWindow.close();
+  }
+}
+
+function createCameraMirrorWindow(config) {
+  closeCameraMirrorWindow();
+
+  const size = Math.max(120, Math.min(320, Number(config?.size) || 200));
+  const margin = 24;
+  const corner = config?.corner === 'br' ? 'br' : 'bl';
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const winSize = size + 20;
+  const x = corner === 'br' ? width - winSize - margin : margin;
+  const y = height - winSize - margin;
+
+  mirrorWindow = new BrowserWindow({
+    width: winSize,
+    height: winSize,
+    x,
+    y,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    hasShadow: false,
+    focusable: false,
+    title: 'CrownRecord Camera',
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload-mirror.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  applyCaptureExclusion(mirrorWindow);
+  mirrorWindow.loadFile('mirror.html');
+  mirrorWindow.webContents.once('did-finish-load', () => {
+    if (mirrorWindow && !mirrorWindow.isDestroyed()) {
+      mirrorWindow.webContents.send('mirror-config', {
+        deviceId: config?.deviceId || '',
+        size,
+      });
+    }
+  });
+  mirrorWindow.on('closed', () => {
+    mirrorWindow = null;
+  });
+
+  return mirrorWindow;
+}
+
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 500,
-    height: 760,
-    minWidth: 400,
+    width: 520,
+    height: 820,
+    minWidth: 420,
     minHeight: 720,
     title: 'CrownRecord',
+    icon: fs.existsSync(path.join(__dirname, 'build', 'icon.ico'))
+      ? path.join(__dirname, 'build', 'icon.ico')
+      : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload-main.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      backgroundThrottling: false,
     },
   });
 
@@ -150,6 +230,7 @@ function setupProcessLogging() {
 }
 
 app.whenReady().then(() => {
+  app.setName('CrownRecord');
   logger.init(app.getPath('userData'));
   logger.info('App ready', {
     version: app.getVersion(),
@@ -185,6 +266,30 @@ ipcMain.handle('log-message', (_e, level, message, meta) => {
   return true;
 });
 
+ipcMain.handle('minimize-main', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.minimize();
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle('restore-main', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    return true;
+  }
+  return false;
+});
+
+ipcMain.on('hud-action', (_e, action) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('recording-command', action);
+  }
+});
+
 ipcMain.handle('get-sources', async () => {
   try {
     const sources = await desktopCapturer.getSources({
@@ -194,12 +299,17 @@ ipcMain.handle('get-sources', async () => {
     });
 
     logger.info('Sources listed', { count: sources.length });
-    return sources.map((s) => ({
-      id: s.id,
-      name: s.name,
-      display_id: s.display_id,
-      thumbnail: s.thumbnail.toDataURL(),
-    }));
+    return sources.map((s) => {
+      const isScreen = String(s.id).startsWith('screen:');
+      return {
+        id: s.id,
+        name: s.name,
+        kind: isScreen ? 'screen' : 'window',
+        label: formatSourceLabel(s.name, isScreen, s.display_id),
+        display_id: s.display_id,
+        thumbnail: s.thumbnail.toDataURL(),
+      };
+    });
   } catch (err) {
     logger.error('get-sources failed', { message: err.message });
     throw err;
@@ -231,6 +341,16 @@ ipcMain.handle('teleprompter-control', (_e, payload) => {
   }
 });
 
+ipcMain.handle('open-camera-mirror', (_e, config) => {
+  createCameraMirrorWindow(config || {});
+  return true;
+});
+
+ipcMain.handle('close-camera-mirror', () => {
+  closeCameraMirrorWindow();
+  return true;
+});
+
 ipcMain.on('hud-state', (_e, state) => {
   if (!hudWindow || hudWindow.isDestroyed()) {
     if (state.recording) createHudWindow();
@@ -238,7 +358,7 @@ ipcMain.on('hud-state', (_e, state) => {
   if (hudWindow && !hudWindow.isDestroyed()) {
     hudWindow.webContents.send('hud-update', state);
     if (state.recording) {
-      hudWindow.showInactive();
+      hudWindow.show();
     } else {
       hudWindow.hide();
     }
@@ -248,13 +368,14 @@ ipcMain.on('hud-state', (_e, state) => {
 ipcMain.handle('save-recording', async (_e, payload) => {
   const extension =
     payload && typeof payload === 'object' && payload.extension === 'mp4' ? 'mp4' : 'webm';
-  const raw = payload && typeof payload === 'object' && payload.buffer != null
-    ? payload.buffer
-    : payload;
+  const raw =
+    payload && typeof payload === 'object' && payload.buffer != null
+      ? payload.buffer
+      : payload;
   const buffer = Buffer.from(raw);
 
   const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
-    title: 'Save recording',
+    title: 'Save CrownRecord',
     defaultPath: `crownrecord-${Date.now()}.${extension}`,
     filters: [
       { name: 'WebM Video', extensions: ['webm'] },
@@ -270,6 +391,22 @@ ipcMain.handle('save-recording', async (_e, payload) => {
   try {
     fs.writeFileSync(filePath, buffer);
     logger.info('Recording saved', { filePath });
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const { response } = await dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Recording saved',
+        message: 'Your CrownRecord video was saved.',
+        detail: filePath,
+        buttons: ['Open file', 'Open folder', 'Done'],
+        defaultId: 0,
+        cancelId: 2,
+      });
+
+      if (response === 0) await shell.openPath(filePath);
+      if (response === 1) shell.showItemInFolder(filePath);
+    }
+
     return { saved: true, filePath };
   } catch (err) {
     logger.error('Save failed', { message: err.message, filePath });

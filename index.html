@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="app-header">
-    <h1>CrownRecord</h1>
+    <img src="assets/logo.png" alt="CrownRecord" class="app-logo" width="280" height="48" />
     <p class="tagline">by Crown Softech · local save · no cloud upload</p>
   </header>
 
@@ -36,7 +36,7 @@
     </div>
     <video id="preview" muted playsinline></video>
     <canvas id="compose-canvas" hidden aria-hidden="true"></canvas>
-    <p id="preview-hint" class="hint">Shows screen + webcam bubble (when enabled) — same as your saved video.</p>
+    <p id="preview-hint" class="hint">Pick a source below. Webcam bubble (when on) appears here and in your saved video at 30fps.</p>
   </section>
 
   <section class="panel audio-panel">
@@ -56,7 +56,28 @@
       <input type="checkbox" id="system-audio-enabled" checked />
       <span>Computer audio (meeting / app sound)</span>
     </label>
-    <p class="audio-hint">Choose mic before recording — like Loom. System audio uses the selected window/screen.</p>
+    <label class="toggle-label">
+      <input type="checkbox" id="enhanced-noise" checked />
+      <span>Enhanced noise suppression</span>
+    </label>
+    <label class="slider-inline">
+      Voice boost <span id="voice-boost-val">100</span>%
+      <input type="range" id="voice-boost" min="50" max="150" value="100" />
+    </label>
+    <p class="audio-hint">Choose mic before recording — like Loom. System audio uses the selected window/screen. Plug in a mic anytime; the list refreshes automatically.</p>
+  </section>
+
+  <section class="panel">
+    <label class="label" for="quality-mode">Recording quality</label>
+    <select id="quality-mode">
+      <option value="720" selected>720p — recommended (lighter on CPU)</option>
+      <option value="1080">1080p — best detail (heavier)</option>
+    </select>
+    <p class="audio-hint">This sets the resolution of your <strong>saved video file</strong>, not just the preview. Idle preview may run at 15fps to save CPU; recording always captures at 30fps.</p>
+    <label class="toggle-label quality-toggle">
+      <input type="checkbox" id="minimize-on-record" checked />
+      <span>Minimize app while recording (shows floating bar; webcam mirror if bubble is on)</span>
+    </label>
   </section>
 
   <section class="panel camera-panel">
@@ -80,6 +101,7 @@
       <option value="bl">Bottom left (Loom style)</option>
       <option value="br">Bottom right</option>
     </select>
+    <p class="audio-hint">The bubble is composited into your saved video. Uncheck minimize above to keep the live preview visible while recording, or use the floating mirror when minimized.</p>
   </section>
 
   <section class="panel">

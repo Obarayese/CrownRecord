@@ -1,6 +1,5 @@
-const TARGET_WIDTH = 1920;
-const TARGET_HEIGHT = 1080;
-const VIDEO_BITRATE = 12_000_000;
+const PREVIEW_COMPOSE_FPS = 15;
+const RECORD_COMPOSE_FPS = 30;
 const AUDIO_BITRATE = 256_000;
 const PREFERRED_WEBM = 'video/webm;codecs=vp9,opus';
 const MP4_CANDIDATES = [
@@ -8,9 +7,7 @@ const MP4_CANDIDATES = [
   'video/mp4;codecs=h264,aac',
   'video/mp4',
 ];
-const MIC_GAIN = 1;
 const SYSTEM_AUDIO_GAIN = 0.85;
-const COMPOSE_FPS = 30;
 const MEETING_SOURCE_HINTS = [
   { pattern: /zoom meeting/i, label: 'Zoom' },
   { pattern: /zoom/i, label: 'Zoom' },
@@ -39,6 +36,16 @@ const bubbleCorner = document.getElementById('bubble-corner');
 const micEnabled = document.getElementById('mic-enabled');
 const systemAudioEnabled = document.getElementById('system-audio-enabled');
 const micSelect = document.getElementById('mic-select');
+const enhancedNoise = document.getElementById('enhanced-noise');
+const voiceBoost = document.getElementById('voice-boost');
+const voiceBoostVal = document.getElementById('voice-boost-val');
+const qualityMode = document.getElementById('quality-mode');
+const minimizeOnRecord = document.getElementById('minimize-on-record');
+const exportFormat = document.getElementById('export-format');
+const refreshDevicesBtn = document.getElementById('refresh-devices');
+const previewPanel = document.getElementById('preview-panel');
+const previewHint = document.getElementById('preview-hint');
+const previewBadge = document.getElementById('preview-badge');
 const scriptText = document.getElementById('script-text');
 const togglePrompter = document.getElementById('toggle-prompter');
 const fontSize = document.getElementById('font-size');
@@ -48,11 +55,6 @@ const scrollSpeedVal = document.getElementById('scroll-speed-val');
 const scrollPlay = document.getElementById('scroll-play');
 const scrollPause = document.getElementById('scroll-pause');
 const scrollReset = document.getElementById('scroll-reset');
-const exportFormat = document.getElementById('export-format');
-const refreshDevicesBtn = document.getElementById('refresh-devices');
-const previewPanel = document.getElementById('preview-panel');
-const previewHint = document.getElementById('preview-hint');
-const previewBadge = document.getElementById('preview-badge');
 
 let mediaStream = null;
 let micStream = null;
@@ -63,19 +65,38 @@ let composedPreviewStream = null;
 let mediaRecorder = null;
 let chunks = [];
 let recordingStartedAt = 0;
+let totalPausedMs = 0;
+let pauseStartedAt = 0;
 let timerInterval = null;
 let prompterOpen = false;
 let isRecording = false;
+let isPaused = false;
+let pauseSupported = false;
 let composeRafId = null;
+let composeStreamFps = 0;
 let screenVideo = null;
 let cameraVideo = null;
 let composeCtx = null;
+let recordWidth = 1280;
+let recordHeight = 720;
 
-composeCanvas.width = TARGET_WIDTH;
-composeCanvas.height = TARGET_HEIGHT;
 composeCtx = composeCanvas.getContext('2d');
 composeCtx.imageSmoothingEnabled = true;
 composeCtx.imageSmoothingQuality = 'high';
+applyRecordDimensions();
+
+function getTargetDimensions() {
+  if (qualityMode?.value === '1080') return { w: 1920, h: 1080, bitrate: 12_000_000 };
+  return { w: 1280, h: 720, bitrate: 6_000_000 };
+}
+
+function applyRecordDimensions() {
+  const { w, h } = getTargetDimensions();
+  recordWidth = w;
+  recordHeight = h;
+  composeCanvas.width = w;
+  composeCanvas.height = h;
+}
 
 function setStatus(msg, type = '') {
   statusEl.textContent = msg;
@@ -83,74 +104,89 @@ function setStatus(msg, type = '') {
 }
 
 function logEvent(level, message, meta) {
-  if (window.crownRecord?.log) {
-    window.crownRecord.log(level, message, meta).catch(() => {});
-  }
+  window.crownRecord?.log(level, message, meta).catch(() => {});
 }
 
 function pickMimeType() {
-  const wantMp4 = exportFormat?.value === 'mp4';
-
-  if (wantMp4) {
+  if (exportFormat?.value === 'mp4') {
     const mp4 = MP4_CANDIDATES.find((t) => MediaRecorder.isTypeSupported(t));
     if (mp4) return mp4;
-    setStatus('MP4 encoding not supported here — recording as WebM instead.', '');
+    setStatus('MP4 not supported — using WebM.', '');
   }
-
   if (MediaRecorder.isTypeSupported(PREFERRED_WEBM)) return PREFERRED_WEBM;
-  const fallbacks = [
-    'video/webm;codecs=vp8,opus',
-    'video/webm;codecs=vp9',
-    'video/webm',
-  ];
-  return fallbacks.find((t) => MediaRecorder.isTypeSupported(t)) || '';
+  return ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9', 'video/webm'].find((t) =>
+    MediaRecorder.isTypeSupported(t),
+  ) || '';
 }
 
 function extensionForMime(mimeType) {
-  return mimeType && mimeType.includes('mp4') ? 'mp4' : 'webm';
+  return mimeType?.includes('mp4') ? 'mp4' : 'webm';
+}
+
+function needsCompositor() {
+  return Boolean(cameraEnabled.checked && cameraStream);
+}
+
+function meetingRank(name) {
+  const lower = name.toLowerCase();
+  for (let i = 0; i < MEETING_SOURCE_HINTS.length; i += 1) {
+    if (MEETING_SOURCE_HINTS[i].pattern.test(lower)) return i;
+  }
+  return 50;
+}
+
+function formatTimer(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+  const s = String(totalSec % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
+}
+
+function getElapsedMs() {
+  if (!isRecording) return 0;
+  if (isPaused) return pauseStartedAt - recordingStartedAt - totalPausedMs;
+  return Date.now() - recordingStartedAt - totalPausedMs;
+}
+
+function pushHud(recording) {
+  window.crownRecord.setHudState({
+    recording,
+    paused: isPaused,
+    pauseSupported,
+    elapsedMs: getElapsedMs(),
+    timer: formatTimer(getElapsedMs()),
+  });
 }
 
 function updateRecordingPreviewUi() {
-  if (!previewPanel) return;
-  previewPanel.classList.toggle('is-recording', isRecording);
-  if (previewBadge) {
-    previewBadge.hidden = !isRecording;
+  previewPanel?.classList.toggle('is-recording', isRecording);
+  if (previewBadge) previewBadge.hidden = !isRecording;
+  if (previewHint && isRecording) {
+    previewHint.textContent = needsCompositor()
+      ? 'Recording at full quality — bubble is in the saved file. Live preview here if the window is open.'
+      : 'Recording at full quality — screen only (lighter on CPU).';
+  } else if (previewHint && !isRecording && needsCompositor()) {
+    previewHint.textContent =
+      'Webcam bubble shows here and will be burned into your saved video at 30fps.';
   }
-  if (previewHint) {
-    if (isRecording) {
-      const cam = cameraEnabled.checked && cameraStream;
-      previewHint.textContent = cam
-        ? 'Live preview — screen + webcam bubble (saved to your file).'
-        : 'Live preview — screen capture (saved to your file).';
-    }
-  }
-}
-
-function shouldComposite() {
-  return isRecording || (cameraEnabled.checked && cameraStream);
 }
 
 function stopMic() {
-  if (micStream) {
-    micStream.getTracks().forEach((t) => t.stop());
-    micStream = null;
-  }
+  micStream?.getTracks().forEach((t) => t.stop());
+  micStream = null;
 }
 
 function stopAudioMixer() {
   stopMic();
-  if (audioContext && audioContext.state !== 'closed') {
-    audioContext.close().catch(() => {});
-  }
+  if (audioContext?.state !== 'closed') audioContext.close().catch(() => {});
   audioContext = null;
   recordingAVStream = null;
 }
 
 function stopCamera() {
-  if (cameraStream) {
-    cameraStream.getTracks().forEach((t) => t.stop());
-    cameraStream = null;
-  }
+  cameraStream?.getTracks().forEach((t) => t.stop());
+  cameraStream = null;
   if (cameraVideo) {
     cameraVideo.srcObject = null;
     cameraVideo = null;
@@ -158,10 +194,9 @@ function stopCamera() {
 }
 
 function stopComposedPreviewStream() {
-  if (composedPreviewStream) {
-    composedPreviewStream.getTracks().forEach((t) => t.stop());
-    composedPreviewStream = null;
-  }
+  composedPreviewStream?.getTracks().forEach((t) => t.stop());
+  composedPreviewStream = null;
+  composeStreamFps = 0;
 }
 
 function stopComposeLoop() {
@@ -175,41 +210,26 @@ function stopPreviewStream() {
   stopComposeLoop();
   stopComposedPreviewStream();
   isRecording = false;
+  isPaused = false;
+  totalPausedMs = 0;
   stopAudioMixer();
-
-  if (mediaStream) {
-    mediaStream.getTracks().forEach((t) => t.stop());
-    mediaStream = null;
-  }
+  mediaStream?.getTracks().forEach((t) => t.stop());
+  mediaStream = null;
   stopCamera();
-
   if (screenVideo) {
     screenVideo.srcObject = null;
     screenVideo = null;
   }
-
   preview.srcObject = null;
 }
 
-function formatTimer(ms) {
-  const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
-  const s = String(totalSec % 60).padStart(2, '0');
-  if (h > 0) return `${h}:${m}:${s}`;
-  return `${m}:${s}`;
-}
-
 function getBubbleGeometry() {
-  const scale = composeCanvas.width / TARGET_WIDTH;
+  const scale = composeCanvas.width / recordWidth;
   const diameter = Number(bubbleSize.value) * scale;
   const margin = 44 * scale;
   const radius = diameter / 2;
   const corner = bubbleCorner.value;
-  const cx =
-    corner === 'br'
-      ? composeCanvas.width - margin - radius
-      : margin + radius;
+  const cx = corner === 'br' ? composeCanvas.width - margin - radius : margin + radius;
   const cy = composeCanvas.height - margin - radius;
   return { cx, cy, radius, diameter };
 }
@@ -222,49 +242,36 @@ function drawCameraBubble() {
 
   const { cx, cy, radius, diameter } = getBubbleGeometry();
   const border = Math.max(4, radius * 0.06);
-
   composeCtx.save();
-
   composeCtx.shadowColor = 'rgba(0, 0, 0, 0.5)';
   composeCtx.shadowBlur = 28;
   composeCtx.shadowOffsetY = 10;
-
   composeCtx.beginPath();
   composeCtx.arc(cx, cy, radius + border, 0, Math.PI * 2);
   composeCtx.fillStyle = '#ffffff';
   composeCtx.fill();
-
   composeCtx.shadowColor = 'transparent';
   composeCtx.beginPath();
   composeCtx.arc(cx, cy, radius, 0, Math.PI * 2);
   composeCtx.clip();
-
   const cover = Math.max(diameter / vw, diameter / vh);
-  const dw = vw * cover;
-  const dh = vh * cover;
-
   composeCtx.translate(cx, cy);
   composeCtx.scale(-1, 1);
-  composeCtx.drawImage(cameraVideo, -dw / 2, -dh / 2, dw, dh);
-
+  composeCtx.drawImage(cameraVideo, -(vw * cover) / 2, -(vh * cover) / 2, vw * cover, vh * cover);
   composeCtx.restore();
 }
 
 function drawComposeFrame() {
-  if (!shouldComposite() || !screenVideo) return;
-
+  if (!needsCompositor() || !screenVideo) return;
   const vw = screenVideo.videoWidth;
   const vh = screenVideo.videoHeight;
-
   if (vw && vh) {
     composeCtx.drawImage(screenVideo, 0, 0, composeCanvas.width, composeCanvas.height);
   } else {
     composeCtx.fillStyle = '#000';
     composeCtx.fillRect(0, 0, composeCanvas.width, composeCanvas.height);
   }
-
   drawCameraBubble();
-
   composeRafId = requestAnimationFrame(drawComposeFrame);
 }
 
@@ -278,9 +285,7 @@ async function ensureScreenVideo() {
     screenVideo.srcObject = mediaStream;
     await screenVideo.play().catch(() => {});
     if (screenVideo.readyState < 2) {
-      await new Promise((resolve) => {
-        screenVideo.onloadeddata = () => resolve();
-      });
+      await new Promise((r) => { screenVideo.onloadeddata = () => r(); });
     }
   }
 }
@@ -294,14 +299,25 @@ async function ensureCameraVideo() {
   cameraVideo.srcObject = cameraStream;
   await cameraVideo.play().catch(() => {});
   if (cameraVideo.readyState < 2) {
-    await new Promise((resolve) => {
-      cameraVideo.onloadeddata = () => resolve();
-    });
+    await new Promise((r) => { cameraVideo.onloadeddata = () => r(); });
   }
 }
 
-function getStreamForRecorder() {
-  return composedPreviewStream;
+function ensureComposedStream() {
+  const fps = isRecording ? RECORD_COMPOSE_FPS : PREVIEW_COMPOSE_FPS;
+  if (!composedPreviewStream || composeStreamFps !== fps) {
+    stopComposedPreviewStream();
+    composedPreviewStream = composeCanvas.captureStream(fps);
+    composeStreamFps = fps;
+  }
+}
+
+function getVideoStreamForRecording() {
+  if (needsCompositor()) {
+    ensureComposedStream();
+    return composedPreviewStream;
+  }
+  return mediaStream;
 }
 
 function desktopVideoConstraints(sourceId) {
@@ -309,124 +325,116 @@ function desktopVideoConstraints(sourceId) {
     mandatory: {
       chromeMediaSource: 'desktop',
       chromeMediaSourceId: sourceId,
-      minWidth: TARGET_WIDTH,
-      minHeight: TARGET_HEIGHT,
-      maxWidth: TARGET_WIDTH,
-      maxHeight: TARGET_HEIGHT,
+      minWidth: recordWidth,
+      minHeight: recordHeight,
+      maxWidth: recordWidth,
+      maxHeight: recordHeight,
       maxFrameRate: 30,
     },
   };
 }
 
-function meetingRank(name) {
-  const lower = name.toLowerCase();
-  for (let i = 0; i < MEETING_SOURCE_HINTS.length; i += 1) {
-    if (MEETING_SOURCE_HINTS[i].pattern.test(lower)) return i;
-  }
-  return 50;
-}
-
-function sortSourcesForPicker(sources) {
-  return [...sources].sort(
-    (a, b) => meetingRank(a.name) - meetingRank(b.name) || a.name.localeCompare(b.name),
-  );
-}
-
-function formatCaptureStatus(stream, audioNote) {
-  const video = stream?.getVideoTracks()[0];
-  if (!video) return `Preview ready${audioNote}.`;
-  const s = video.getSettings();
-  const w = s.width || '?';
-  const h = s.height || '?';
-  const fps = s.frameRate ? `${Math.round(s.frameRate)}fps` : '30fps';
-  return `Capturing ${w}×${h} @ ${fps} · VP9 ${VIDEO_BITRATE / 1_000_000}Mbps${audioNote}`;
-}
-
 function desktopAudioConstraints(sourceId) {
   return {
-    mandatory: {
-      chromeMediaSource: 'desktop',
-      chromeMediaSourceId: sourceId,
-    },
+    mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId },
   };
 }
 
 async function captureDesktopStream(sourceId, includeSystemAudio) {
   const video = desktopVideoConstraints(sourceId);
-
   if (!includeSystemAudio) {
     return navigator.mediaDevices.getUserMedia({ audio: false, video });
   }
-
   try {
     return await navigator.mediaDevices.getUserMedia({
       audio: desktopAudioConstraints(sourceId),
       video,
     });
   } catch (err) {
-    setStatus(
-      `System audio unavailable for this source — video only. (${err.message})`,
-      'error',
-    );
+    setStatus(`System audio unavailable — video only. (${err.message})`, 'error');
     return navigator.mediaDevices.getUserMedia({ audio: false, video });
   }
 }
 
-async function loadMicDevices() {
-  let devices = [];
-  try {
-    devices = await navigator.mediaDevices.enumerateDevices();
-  } catch {
-    return;
-  }
+function formatCaptureStatus(stream, audioNote) {
+  const track = stream?.getVideoTracks()[0];
+  if (!track) return `Ready${audioNote}.`;
+  const s = track.getSettings();
+  return `Capturing ${s.width || '?'}×${s.height || '?'} @ ${Math.round(s.frameRate || 30)}fps${audioNote}`;
+}
 
+async function loadMicDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
   const mics = devices.filter((d) => d.kind === 'audioinput');
   const prev = micSelect.value;
-
   micSelect.innerHTML = '<option value="">Default microphone</option>';
-  for (const mic of mics) {
+  mics.forEach((mic) => {
     const opt = document.createElement('option');
     opt.value = mic.deviceId;
     opt.textContent = mic.label || `Microphone ${micSelect.length}`;
     micSelect.appendChild(opt);
-  }
+  });
+  if (prev && [...micSelect.options].some((o) => o.value === prev)) micSelect.value = prev;
+}
 
-  if (prev && [...micSelect.options].some((o) => o.value === prev)) {
-    micSelect.value = prev;
+async function loadCameraDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  const cameras = devices.filter((d) => d.kind === 'videoinput');
+  const prev = cameraSelect.value;
+  cameraSelect.innerHTML = '<option value="">Default camera</option>';
+  if (!cameras.length) {
+    cameraSelect.innerHTML = '<option value="">No camera found</option>';
+    return;
   }
+  cameras.forEach((cam) => {
+    const opt = document.createElement('option');
+    opt.value = cam.deviceId;
+    opt.textContent = cam.label || `Camera ${cameraSelect.length}`;
+    cameraSelect.appendChild(opt);
+  });
+  if (prev && [...cameraSelect.options].some((o) => o.value === prev)) cameraSelect.value = prev;
+}
+
+async function requestDeviceLabels() {
+  try {
+    const tmp = await navigator.mediaDevices.getUserMedia({ audio: true, video: { width: 1, height: 1 } });
+    tmp.getTracks().forEach((t) => t.stop());
+  } catch { /* permission pending */ }
+}
+
+async function refreshAllDevices(notify = true) {
+  await requestDeviceLabels();
+  await loadMicDevices();
+  await loadCameraDevices();
+  if (notify) setStatus('Microphone and camera lists updated.', 'ok');
 }
 
 async function startMicCapture() {
   stopMic();
-
-  const deviceId = micSelect.value;
+  const enhanced = enhancedNoise?.checked !== false;
+  const boost = voiceBoost ? Number(voiceBoost.value) / 100 : 1;
   micStream = await navigator.mediaDevices.getUserMedia({
     audio: {
-      deviceId: deviceId ? { exact: deviceId } : undefined,
+      deviceId: micSelect.value ? { exact: micSelect.value } : undefined,
       echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
+      noiseSuppression: enhanced,
+      autoGainControl: enhanced,
       channelCount: 2,
       sampleRate: 48000,
     },
     video: false,
   });
-
-  return micStream;
+  return { micStream, boost, enhanced };
 }
 
 async function buildRecordingStream() {
-  const videoStream = getStreamForRecorder();
-  if (!videoStream) throw new Error('No composited video stream');
-
-  const videoTrack = videoStream.getVideoTracks()[0];
+  const videoStream = getVideoStreamForRecording();
+  const videoTrack = videoStream?.getVideoTracks()[0];
   if (!videoTrack) throw new Error('No video track');
 
   const wantMic = micEnabled.checked;
   const wantSystem = systemAudioEnabled.checked;
-  const systemTracks = mediaStream
-    ? mediaStream.getAudioTracks().filter((t) => t.readyState === 'live')
-    : [];
+  const systemTracks = mediaStream?.getAudioTracks().filter((t) => t.readyState === 'live') || [];
 
   if (!wantMic && (!wantSystem || !systemTracks.length)) {
     return new MediaStream([videoTrack]);
@@ -438,14 +446,19 @@ async function buildRecordingStream() {
 
   if (wantMic) {
     try {
-      await startMicCapture();
+      const { boost, enhanced } = await startMicCapture();
       if (micStream?.getAudioTracks().length) {
         const gain = audioContext.createGain();
-        gain.gain.value = MIC_GAIN;
-        audioContext
-          .createMediaStreamSource(micStream)
-          .connect(gain)
-          .connect(destination);
+        gain.gain.value = boost;
+        const src = audioContext.createMediaStreamSource(micStream);
+        if (enhanced) {
+          const hp = audioContext.createBiquadFilter();
+          hp.type = 'highpass';
+          hp.frequency.value = 90;
+          src.connect(hp).connect(gain).connect(destination);
+        } else {
+          src.connect(gain).connect(destination);
+        }
         inputs += 1;
       }
     } catch (err) {
@@ -456,201 +469,78 @@ async function buildRecordingStream() {
   if (wantSystem && systemTracks.length) {
     const gain = audioContext.createGain();
     gain.gain.value = SYSTEM_AUDIO_GAIN;
-    audioContext
-      .createMediaStreamSource(new MediaStream(systemTracks))
-      .connect(gain)
-      .connect(destination);
+    audioContext.createMediaStreamSource(new MediaStream(systemTracks)).connect(gain).connect(destination);
     inputs += 1;
   }
 
-  const mixedAudio = destination.stream.getAudioTracks();
-  if (!mixedAudio.length || inputs === 0) {
+  const mixed = destination.stream.getAudioTracks();
+  if (!mixed.length || !inputs) {
     stopAudioMixer();
-    if (wantMic && !wantSystem) {
-      throw new Error('Microphone produced no audio track');
-    }
-    if (wantSystem && !wantMic) {
-      throw new Error('No system audio track on this capture source');
-    }
     throw new Error('No audio inputs available');
   }
 
-  recordingAVStream = new MediaStream([videoTrack, ...mixedAudio]);
+  recordingAVStream = new MediaStream([videoTrack, ...mixed]);
   return recordingAVStream;
-}
-
-function setAudioControlsDisabled(disabled) {
-  micEnabled.disabled = disabled;
-  systemAudioEnabled.disabled = disabled;
-  micSelect.disabled = disabled;
 }
 
 async function updatePreviewOutput() {
   if (!mediaStream) return;
-
   await ensureScreenVideo();
 
-  if (shouldComposite()) {
-    if (!composedPreviewStream) {
-      composedPreviewStream = composeCanvas.captureStream(COMPOSE_FPS);
-    }
-    if (!composeRafId) {
-      drawComposeFrame();
-    }
+  if (needsCompositor()) {
+    ensureComposedStream();
+    if (!composeRafId) drawComposeFrame();
     preview.srcObject = composedPreviewStream;
   } else {
     stopComposeLoop();
     stopComposedPreviewStream();
     preview.srcObject = mediaStream;
   }
-
   await preview.play().catch(() => {});
   updateRecordingPreviewUi();
 }
 
-async function requestDeviceLabels() {
-  try {
-    const tmp = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: { width: 1, height: 1 },
+function populateSourceSelect(sources) {
+  sourceSelect.innerHTML = '';
+  const sorted = [...sources].sort(
+    (a, b) => meetingRank(a.name) - meetingRank(b.name) || a.label.localeCompare(b.label),
+  );
+  const screens = sorted.filter((s) => s.kind === 'screen');
+  const meetings = sorted.filter((s) => s.kind === 'window' && meetingRank(s.name) < 50);
+  const windows = sorted.filter((s) => s.kind === 'window' && meetingRank(s.name) >= 50);
+
+  function addGroup(label, items, prefix = '') {
+    if (!items.length) return;
+    const grp = document.createElement('optgroup');
+    grp.label = label;
+    items.forEach((s) => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = `${prefix}${s.label}`;
+      grp.appendChild(opt);
     });
-    tmp.getTracks().forEach((t) => t.stop());
-  } catch {
-    /* labels may stay generic until record */
-  }
-}
-
-async function refreshAllDevices() {
-  await requestDeviceLabels();
-  await loadMicDevices();
-  await loadCameraDevices();
-  cameraSelect.disabled = false;
-  setStatus('Microphone and camera lists updated.', 'ok');
-}
-
-async function loadCameraDevices() {
-  let devices = [];
-  try {
-    devices = await navigator.mediaDevices.enumerateDevices();
-  } catch {
-    return;
+    sourceSelect.appendChild(grp);
   }
 
-  const cameras = devices.filter((d) => d.kind === 'videoinput');
-  const prev = cameraSelect.value;
-
-  cameraSelect.innerHTML = '';
-  if (!cameras.length) {
-    cameraSelect.innerHTML = '<option value="">No camera found</option>';
-    cameraSelect.disabled = true;
-    return;
-  }
-
-  for (const cam of cameras) {
-    const opt = document.createElement('option');
-    opt.value = cam.deviceId;
-    opt.textContent = cam.label || `Camera ${cameraSelect.length + 1}`;
-    cameraSelect.appendChild(opt);
-  }
-
-  if (prev && [...cameraSelect.options].some((o) => o.value === prev)) {
-    cameraSelect.value = prev;
-  }
-}
-
-async function startCamera() {
-  const deviceId = cameraSelect.value;
-  const constraints = {
-    audio: false,
-    video: {
-      deviceId: deviceId ? { exact: deviceId } : undefined,
-      width: { ideal: CAMERA_IDEAL_WIDTH, min: 640 },
-      height: { ideal: CAMERA_IDEAL_HEIGHT, min: 480 },
-      frameRate: { ideal: 30, max: 30 },
-      facingMode: 'user',
-    },
-  };
-
-  stopCamera();
-
-  try {
-    cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-    await loadCameraDevices();
-
-    const track = cameraStream.getVideoTracks()[0];
-    const settings = track.getSettings();
-    const label = track.label || 'Camera';
-    setStatus(
-      `Camera on · ${label} (${settings.width || '?'}×${settings.height || '?'})`,
-      'ok',
-    );
-
-    await ensureCameraVideo();
-    await updatePreviewOutput();
-  } catch (err) {
-    cameraEnabled.checked = false;
-    setStatus(`Camera blocked or unavailable: ${err.message}`, 'error');
-  }
-}
-
-async function onCameraToggle() {
-  if (cameraEnabled.checked) {
-    await loadCameraDevices();
-    if (!cameraSelect.value && cameraSelect.options.length) {
-      cameraSelect.selectedIndex = 0;
-    }
-    if (!mediaStream) {
-      setStatus('Select a screen source first, then enable camera.', 'error');
-      cameraEnabled.checked = false;
-      cameraSelect.disabled = true;
-      return;
-    }
-    await startCamera();
-  } else {
-    stopCamera();
-    await updatePreviewOutput();
-    if (mediaStream) setStatus('Camera off. Screen preview active.', 'ok');
-  }
-}
-
-function pushHud(recording) {
-  const elapsed = recording ? Date.now() - recordingStartedAt : 0;
-  window.crownRecord.setHudState({
-    recording,
-    elapsedMs: elapsed,
-    timer: formatTimer(elapsed),
-  });
+  addGroup('Entire screen', screens);
+  addGroup('Meetings & browsers (recommended)', meetings, '★ ');
+  addGroup('Application windows', windows);
 }
 
 async function loadSources() {
   sourceSelect.disabled = true;
   sourceSelect.innerHTML = '<option value="">Loading…</option>';
-
   try {
     const sources = await window.crownRecord.getSources();
-    sourceSelect.innerHTML = '';
-
     if (!sources.length) {
       sourceSelect.innerHTML = '<option value="">No sources found</option>';
-      setStatus('No capture sources. Grant screen capture permission.', 'error');
+      setStatus('No capture sources found.', 'error');
       return;
     }
-
-    const sorted = sortSourcesForPicker(sources);
-    for (const s of sorted) {
-      const opt = document.createElement('option');
-      opt.value = s.id;
-      const rank = meetingRank(s.name);
-      const prefix = rank < 50 ? '★ ' : '';
-      opt.textContent = `${prefix}${s.name}`;
-      sourceSelect.appendChild(opt);
-    }
-
+    populateSourceSelect(sources);
     sourceSelect.disabled = false;
     recordBtn.disabled = false;
-    setStatus(
-      `${sources.length} sources ready. ★ = Zoom, Meet, Teams, etc. — pick the meeting window.`,
-    );
+    setStatus(`${sources.length} sources — grouped by screen, meetings, and apps.`);
     await attachStream(sourceSelect.value);
   } catch (err) {
     logEvent('error', 'Sources failed', { message: err.message });
@@ -660,31 +550,24 @@ async function loadSources() {
 
 async function attachStream(sourceId) {
   if (!sourceId) return;
-
   const wasCameraOn = cameraEnabled.checked;
   const cameraDevice = cameraSelect.value;
-
   stopPreviewStream();
   cameraEnabled.checked = wasCameraOn;
+  applyRecordDimensions();
 
   try {
-    mediaStream = await captureDesktopStream(
-      sourceId,
-      systemAudioEnabled.checked,
-    );
-
+    mediaStream = await captureDesktopStream(sourceId, systemAudioEnabled.checked);
     await loadMicDevices();
-
-    const sysTracks = mediaStream.getAudioTracks();
     const audioNote =
-      systemAudioEnabled.checked && sysTracks.length
+      systemAudioEnabled.checked && mediaStream.getAudioTracks().length
         ? ' · system audio on'
         : systemAudioEnabled.checked
           ? ' · system audio pending'
           : '';
 
     previewHint.textContent =
-      'Live preview below. Pick mic, camera, and format before Record. REC/timer only on floating HUD, not in saved video.';
+      'Live preview below. Pick mic/camera before Record. Use 720p mode if the PC feels slow.';
 
     if (wasCameraOn) {
       if (cameraDevice) cameraSelect.value = cameraDevice;
@@ -701,6 +584,65 @@ async function attachStream(sourceId) {
   }
 }
 
+async function startCamera() {
+  stopCamera();
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
+        width: { ideal: CAMERA_IDEAL_WIDTH, min: 640 },
+        height: { ideal: CAMERA_IDEAL_HEIGHT, min: 480 },
+        frameRate: { ideal: 30, max: 30 },
+      },
+    });
+    await loadCameraDevices();
+    await ensureCameraVideo();
+    await updatePreviewOutput();
+    const t = cameraStream.getVideoTracks()[0];
+    setStatus(`Camera: ${t.label || 'active'}`, 'ok');
+  } catch (err) {
+    cameraEnabled.checked = false;
+    setStatus(`Camera unavailable: ${err.message}`, 'error');
+  }
+}
+
+async function onCameraToggle() {
+  if (!cameraEnabled.checked) {
+    stopCamera();
+    await updatePreviewOutput();
+    if (mediaStream) setStatus('Camera off — lighter CPU usage.', 'ok');
+    return;
+  }
+  if (!mediaStream) {
+    cameraEnabled.checked = false;
+    setStatus('Select a screen source first.', 'error');
+    return;
+  }
+  await loadCameraDevices();
+  await startCamera();
+}
+
+function setRecordingControlsDisabled(disabled) {
+  recordBtn.disabled = disabled;
+  stopBtn.disabled = !disabled;
+  sourceSelect.disabled = disabled;
+  refreshBtn.disabled = disabled;
+  cameraEnabled.disabled = disabled;
+  cameraSelect.disabled = disabled;
+  bubbleSize.disabled = disabled;
+  bubbleCorner.disabled = disabled;
+  if (exportFormat) exportFormat.disabled = disabled;
+  if (qualityMode) qualityMode.disabled = disabled;
+  if (refreshDevicesBtn) refreshDevicesBtn.disabled = disabled;
+  if (minimizeOnRecord) minimizeOnRecord.disabled = disabled;
+  micEnabled.disabled = disabled;
+  systemAudioEnabled.disabled = disabled;
+  micSelect.disabled = disabled;
+  if (enhancedNoise) enhancedNoise.disabled = disabled;
+  if (voiceBoost) voiceBoost.disabled = disabled;
+}
+
 async function startRecording() {
   if (!mediaStream) {
     setStatus('Select a source first.', 'error');
@@ -709,11 +651,13 @@ async function startRecording() {
 
   const mimeType = pickMimeType();
   if (!mimeType) {
-    setStatus('VP9/WebM not supported on this system.', 'error');
+    setStatus('No supported video codec on this PC.', 'error');
     return;
   }
 
   isRecording = true;
+  isPaused = false;
+  totalPausedMs = 0;
   updateRecordingPreviewUi();
 
   try {
@@ -725,7 +669,7 @@ async function startRecording() {
     await updatePreviewOutput();
   } catch (err) {
     isRecording = false;
-    setStatus(`Compositor failed: ${err.message}`, 'error');
+    setStatus(`Setup failed: ${err.message}`, 'error');
     return;
   }
 
@@ -739,21 +683,15 @@ async function startRecording() {
     return;
   }
 
-  if (!streamForRecorder) {
-    isRecording = false;
-    setStatus('Could not start recording stream.', 'error');
-    return;
-  }
-
+  const { bitrate } = getTargetDimensions();
   chunks = [];
-  const options = {
-    mimeType,
-    videoBitsPerSecond: VIDEO_BITRATE,
-    audioBitsPerSecond: AUDIO_BITRATE,
-  };
 
   try {
-    mediaRecorder = new MediaRecorder(streamForRecorder, options);
+    mediaRecorder = new MediaRecorder(streamForRecorder, {
+      mimeType,
+      videoBitsPerSecond: bitrate,
+      audioBitsPerSecond: AUDIO_BITRATE,
+    });
   } catch (err) {
     isRecording = false;
     stopAudioMixer();
@@ -762,6 +700,8 @@ async function startRecording() {
     return;
   }
 
+  pauseSupported = typeof mediaRecorder.pause === 'function';
+
   mediaRecorder.ondataavailable = (e) => {
     if (e.data.size > 0) chunks.push(e.data);
   };
@@ -769,39 +709,26 @@ async function startRecording() {
   mediaRecorder.onstop = async () => {
     clearInterval(timerInterval);
     isRecording = false;
+    isPaused = false;
     pushHud(false);
+    await window.crownRecord.closeCameraMirror();
     stopAudioMixer();
+    await window.crownRecord.restoreMainWindow();
     await updatePreviewOutput();
-
-    const blob = new Blob(chunks, { type: mimeType });
-    const buffer = await blob.arrayBuffer();
-    const extension = extensionForMime(mimeType);
-
+    setRecordingControlsDisabled(false);
     recordBtn.disabled = false;
     stopBtn.disabled = true;
-    sourceSelect.disabled = false;
-    refreshBtn.disabled = false;
-    cameraEnabled.disabled = false;
-    bubbleSize.disabled = false;
-    bubbleCorner.disabled = false;
-    cameraSelect.disabled = false;
-    if (exportFormat) exportFormat.disabled = false;
-    if (refreshDevicesBtn) refreshDevicesBtn.disabled = false;
-    setAudioControlsDisabled(false);
-
     updateRecordingPreviewUi();
-    setStatus('Saving…');
+
+    const blob = new Blob(chunks, { type: mimeType });
     const result = await window.crownRecord.saveRecording({
-      buffer,
-      extension,
+      buffer: await blob.arrayBuffer(),
+      extension: extensionForMime(mimeType),
       mimeType,
     });
 
-    if (result.saved) {
-      setStatus(`Saved: ${result.filePath}`, 'ok');
-    } else {
-      setStatus('Recording discarded (save canceled).');
-    }
+    if (result.saved) setStatus(`Saved: ${result.filePath}`, 'ok');
+    else setStatus('Recording discarded.', '');
   };
 
   mediaRecorder.start(500);
@@ -809,41 +736,45 @@ async function startRecording() {
   pushHud(true);
   timerInterval = setInterval(() => pushHud(true), 250);
 
+  setRecordingControlsDisabled(true);
   recordBtn.disabled = true;
   stopBtn.disabled = false;
-  sourceSelect.disabled = true;
-  refreshBtn.disabled = true;
-  cameraSelect.disabled = true;
-  cameraEnabled.disabled = true;
-  bubbleSize.disabled = true;
-  bubbleCorner.disabled = true;
-  if (exportFormat) exportFormat.disabled = true;
-  if (refreshDevicesBtn) refreshDevicesBtn.disabled = true;
-  setAudioControlsDisabled(true);
 
-  const camNote = cameraStream ? ' · webcam' : '';
-  const micNote = micEnabled.checked ? ' · mic' : '';
-  const sysNote =
-    systemAudioEnabled.checked && mediaStream?.getAudioTracks().length
-      ? ' · system audio'
-      : '';
-  logEvent('info', 'Recording started', { mimeType, mic: micEnabled.checked, systemAudio: systemAudioEnabled.checked });
-  setStatus(
-    `Recording${micNote}${sysNote}${camNote} · ${mimeType}`,
-    'ok',
-  );
+  if (minimizeOnRecord?.checked !== false) {
+    await window.crownRecord.minimizeMainWindow();
+    if (cameraEnabled.checked && cameraStream) {
+      await window.crownRecord.openCameraMirror({
+        deviceId: cameraSelect.value || '',
+        size: Number(bubbleSize.value),
+        corner: bubbleCorner.value,
+      });
+    }
+  }
+
+  logEvent('info', 'Recording started', { mimeType, quality: qualityMode?.value });
+  setStatus(`Recording · ${qualityMode?.value === '1080' ? '1080p' : '720p'} · use floating bar to pause/stop`, 'ok');
 }
 
 function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop();
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+}
+
+function togglePauseRecording() {
+  if (!mediaRecorder || !pauseSupported) return;
+  if (isPaused) {
+    mediaRecorder.resume();
+    totalPausedMs += Date.now() - pauseStartedAt;
+    isPaused = false;
+  } else if (mediaRecorder.state === 'recording') {
+    mediaRecorder.pause();
+    pauseStartedAt = Date.now();
+    isPaused = true;
   }
+  pushHud(true);
 }
 
 function syncTeleprompterText() {
-  if (prompterOpen) {
-    window.crownRecord.setTeleprompterText(scriptText.value);
-  }
+  if (prompterOpen) window.crownRecord.setTeleprompterText(scriptText.value);
 }
 
 function sendPrompterControl(action, extra = {}) {
@@ -855,37 +786,39 @@ function sendPrompterControl(action, extra = {}) {
   });
 }
 
+window.crownRecord.onRecordingCommand((action) => {
+  if (action === 'stop') stopRecording();
+  if (action === 'pause') togglePauseRecording();
+});
+
+navigator.mediaDevices.addEventListener('devicechange', async () => {
+  const prevMic = micSelect.value;
+  await refreshAllDevices(false);
+  if (prevMic && [...micSelect.options].some((o) => o.value === prevMic)) {
+    micSelect.value = prevMic;
+  }
+  if (isRecording) {
+    setStatus('New device detected — mic list updated. Stop recording to switch safely.', '');
+  } else {
+    setStatus('New audio/video device detected — list refreshed.', 'ok');
+  }
+});
+
 sourceSelect.addEventListener('change', () => attachStream(sourceSelect.value));
 refreshBtn.addEventListener('click', loadSources);
 recordBtn.addEventListener('click', startRecording);
 stopBtn.addEventListener('click', stopRecording);
-
 cameraEnabled.addEventListener('change', onCameraToggle);
-cameraSelect.addEventListener('change', () => {
-  if (cameraEnabled.checked) startCamera();
+cameraSelect.addEventListener('change', () => { if (cameraEnabled.checked) startCamera(); });
+bubbleSize?.addEventListener('input', () => { bubbleSizeVal.textContent = bubbleSize.value; });
+systemAudioEnabled.addEventListener('change', () => { if (sourceSelect.value) attachStream(sourceSelect.value); });
+qualityMode?.addEventListener('change', () => {
+  if (sourceSelect.value && !isRecording) attachStream(sourceSelect.value);
 });
-bubbleSize.addEventListener('input', () => {
-  bubbleSizeVal.textContent = bubbleSize.value;
-});
-bubbleCorner.addEventListener('change', () => {});
-
-systemAudioEnabled.addEventListener('change', () => {
-  if (sourceSelect.value) attachStream(sourceSelect.value);
-});
-
-micEnabled.addEventListener('change', async () => {
-  if (micEnabled.checked) {
-    try {
-      const tmp = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: false,
-      });
-      tmp.getTracks().forEach((t) => t.stop());
-      await loadMicDevices();
-    } catch {
-      /* mic permission requested again when recording starts */
-    }
-  }
+voiceBoost?.addEventListener('input', () => { voiceBoostVal.textContent = voiceBoost.value; });
+refreshDevicesBtn?.addEventListener('click', () => refreshAllDevices(true));
+micSelect.addEventListener('change', () => {
+  if (isRecording) setStatus('Mic will apply on next recording.', '');
 });
 
 togglePrompter.addEventListener('click', async () => {
@@ -903,17 +836,8 @@ togglePrompter.addEventListener('click', async () => {
 });
 
 scriptText.addEventListener('input', syncTeleprompterText);
-
-fontSize.addEventListener('input', () => {
-  fontSizeVal.textContent = fontSize.value;
-  sendPrompterControl('fontSize');
-});
-
-scrollSpeed.addEventListener('input', () => {
-  scrollSpeedVal.textContent = scrollSpeed.value;
-  sendPrompterControl('scrollSpeed');
-});
-
+fontSize.addEventListener('input', () => { fontSizeVal.textContent = fontSize.value; sendPrompterControl('fontSize'); });
+scrollSpeed.addEventListener('input', () => { scrollSpeedVal.textContent = scrollSpeed.value; sendPrompterControl('scrollSpeed'); });
 scrollPlay.addEventListener('click', () => sendPrompterControl('play'));
 scrollPause.addEventListener('click', () => sendPrompterControl('pause'));
 scrollReset.addEventListener('click', () => sendPrompterControl('reset'));
@@ -921,40 +845,19 @@ scrollReset.addEventListener('click', () => sendPrompterControl('reset'));
 async function initSupportUi() {
   const openLogsBtn = document.getElementById('open-logs');
   const logPathEl = document.getElementById('log-path');
-
   try {
     const info = await window.crownRecord.getLogInfo();
-    if (info.logFile) {
-      logPathEl.textContent = `Logs: ${info.logFile}`;
-    }
+    if (info.logFile) logPathEl.textContent = `Logs: ${info.logFile}`;
   } catch {
     logPathEl.textContent = 'Logs available after app starts.';
   }
-
   openLogsBtn.addEventListener('click', async () => {
-    try {
-      await window.crownRecord.openLogFolder();
-      setStatus('Log folder opened — attach latest .log to support email.', 'ok');
-    } catch (err) {
-      setStatus(`Could not open logs: ${err.message}`, 'error');
-    }
-  });
-}
-
-if (refreshDevicesBtn) {
-  refreshDevicesBtn.addEventListener('click', refreshAllDevices);
-}
-
-if (exportFormat) {
-  exportFormat.addEventListener('change', () => {
-    const mp4Ok = MP4_CANDIDATES.some((t) => MediaRecorder.isTypeSupported(t));
-    if (exportFormat.value === 'mp4' && !mp4Ok) {
-      setStatus('MP4 may not be available on this PC — WebM will be used if needed.', '');
-    }
+    await window.crownRecord.openLogFolder();
+    setStatus('Log folder opened.', 'ok');
   });
 }
 
 loadSources();
 loadMicDevices();
-requestDeviceLabels().then(() => loadCameraDevices());
+requestDeviceLabels().then(loadCameraDevices);
 initSupportUi();
