@@ -245,11 +245,21 @@ ipcMain.on('hud-state', (_e, state) => {
   }
 });
 
-ipcMain.handle('save-recording', async (_e, buffer) => {
+ipcMain.handle('save-recording', async (_e, payload) => {
+  const extension =
+    payload && typeof payload === 'object' && payload.extension === 'mp4' ? 'mp4' : 'webm';
+  const raw = payload && typeof payload === 'object' && payload.buffer != null
+    ? payload.buffer
+    : payload;
+  const buffer = Buffer.from(raw);
+
   const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
     title: 'Save recording',
-    defaultPath: `crownrecord-${Date.now()}.webm`,
-    filters: [{ name: 'WebM Video', extensions: ['webm'] }],
+    defaultPath: `crownrecord-${Date.now()}.${extension}`,
+    filters: [
+      { name: 'WebM Video', extensions: ['webm'] },
+      { name: 'MP4 Video', extensions: ['mp4'] },
+    ],
   });
 
   if (canceled || !filePath) {
@@ -258,7 +268,7 @@ ipcMain.handle('save-recording', async (_e, buffer) => {
   }
 
   try {
-    fs.writeFileSync(filePath, Buffer.from(buffer));
+    fs.writeFileSync(filePath, buffer);
     logger.info('Recording saved', { filePath });
     return { saved: true, filePath };
   } catch (err) {

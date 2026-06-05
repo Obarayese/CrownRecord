@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CrownRecord — Free Screen Recorder | Crown Softech</title>
-  <meta name="description" content="CrownRecord is a free Windows screen recorder with webcam bubble, teleprompter, and Zoom/Meet capture. By Crown Softech." />
+  <title>CrownRecord — Free Local Screen Recorder | Crown Softech</title>
+  <meta name="description" content="Record Zoom, Google Meet, and Teams locally without cloud hosting. Loom-style webcam bubble, teleprompter, mic + system audio. Free Windows app by Crown Softech." />
+  <meta property="og:title" content="CrownRecord — Record meetings locally" />
+  <meta property="og:description" content="No upload required. Alternative to Loom with local download. Zoom, Meet, Teams, 1080p, free for Windows." />
+  <meta property="og:url" content="https://crownsoftech.com/crownrecord" />
   <style>
     :root {
       --bg: #0f1117;
@@ -13,6 +16,7 @@
       --accent: #6366f1;
       --card: #1a1d27;
       --border: #2a2f3d;
+      --ok: #4ade80;
     }
     * { box-sizing: border-box; }
     body {
@@ -22,10 +26,21 @@
       color: var(--text);
       line-height: 1.6;
     }
-    .wrap { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
+    .wrap { max-width: 800px; margin: 0 auto; padding: 48px 24px 80px; }
     .brand { color: var(--muted); font-size: 0.9rem; margin-bottom: 8px; }
-    h1 { font-size: 2.2rem; margin: 0 0 12px; letter-spacing: -0.02em; }
-    .lead { color: var(--muted); font-size: 1.1rem; margin-bottom: 32px; }
+    .brand a { color: var(--accent); text-decoration: none; }
+    h1 { font-size: 2.4rem; margin: 0 0 12px; letter-spacing: -0.02em; line-height: 1.15; }
+    .hero-badge {
+      display: inline-block;
+      background: rgba(99, 102, 241, 0.15);
+      color: #a5b4fc;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 999px;
+      margin-bottom: 16px;
+    }
+    .lead { color: var(--muted); font-size: 1.1rem; margin-bottom: 28px; }
     .card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -33,6 +48,7 @@
       padding: 24px;
       margin-bottom: 20px;
     }
+    .card h2 { margin-top: 0; font-size: 1.15rem; }
     .btn {
       display: inline-block;
       background: var(--accent);
@@ -41,61 +57,158 @@
       font-weight: 600;
       padding: 14px 24px;
       border-radius: 10px;
-      margin-right: 12px;
+      margin-right: 10px;
       margin-top: 8px;
     }
-    .btn.secondary {
-      background: var(--border);
-      color: var(--text);
-    }
+    .btn.secondary { background: var(--border); color: var(--text); }
     ul { padding-left: 1.2rem; color: var(--muted); }
     li { margin-bottom: 8px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+    }
+    th { background: rgba(0,0,0,0.25); color: var(--text); }
+    td { color: var(--muted); }
+    .yes { color: var(--ok); font-weight: 600; }
+    .faq dt { font-weight: 600; margin-top: 16px; color: var(--text); }
+    .faq dd { margin: 6px 0 0; color: var(--muted); }
     footer { margin-top: 40px; font-size: 0.85rem; color: var(--muted); }
     footer a { color: var(--accent); }
+    code { background: rgba(0,0,0,0.35); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <p class="brand"><a href="https://crownsoftech.com">Crown Softech</a></p>
-    <h1>CrownRecord</h1>
+    <span class="hero-badge">Free · Windows · Local save</span>
+    <h1>Record meetings now.<br />No cloud host required.</h1>
     <p class="lead">
-      Free Windows screen recorder — 1080p, webcam bubble, invisible teleprompter,
-      mic + system audio. Record Zoom, Google Meet, and Teams without paid cloud recording.
+      <strong>CrownRecord</strong> is a free alternative to <strong>Loom</strong> when you want videos
+      <strong>saved on your PC</strong> — not stuck in someone else’s cloud. Record Zoom, Google Meet,
+      Microsoft Teams, and any window with mic + computer audio and an optional webcam bubble.
+      <strong>No Crown Softech account. No upload before you record.</strong>
     </p>
 
     <div class="card">
-      <h2 style="margin-top:0">Download (Windows)</h2>
-      <a class="btn" href="https://github.com/Obarayese/CrownRecord/releases/latest">Download CrownRecord (Windows)</a>
-      <a class="btn secondary" href="mailto:support@crownsoftech.com">Contact support</a>
+      <h2>Download (Windows)</h2>
+      <p>Install and record in minutes. Files save locally when you stop.</p>
+      <a class="btn" href="https://github.com/Obarayese/CrownRecord/releases/latest">Download CrownRecord</a>
+      <a class="btn secondary" href="mailto:support@crownsoftech.com">support@crownsoftech.com</a>
+      <p style="margin-top:14px;font-size:0.85rem;color:var(--muted)">
+        Default format: <strong>WebM</strong> (high quality, small size). Choose <strong>MP4</strong> in the app when your PC supports it, or convert WebM with VLC / HandBrake.
+      </p>
     </div>
 
     <div class="card">
-      <h2 style="margin-top:0">Features</h2>
+      <h2>Why CrownRecord vs cloud recording?</h2>
       <ul>
-        <li>Up to 1080p · VP9 + Opus</li>
-        <li>Loom-style webcam bubble</li>
-        <li>Teleprompter overlay (not captured in video)</li>
-        <li>Microphone + computer audio mixed</li>
-        <li>★ quick-pick for Zoom, Chrome/Meet, Teams</li>
+        <li><strong>No meeting host permission</strong> for Google/Zoom <em>cloud</em> record — you capture the meeting window on your machine.</li>
+        <li><strong>No hosting</strong> on Crown Softech — recording never leaves your PC unless you upload it yourself.</li>
+        <li><strong>Loom-style</strong> webcam bubble + invisible teleprompter for pitches.</li>
+        <li><strong>Pick your mic and camera</strong> (including external webcam) before you hit Record.</li>
+        <li><strong>Live preview</strong> shows screen + bubble while recording.</li>
       </ul>
     </div>
 
     <div class="card">
-      <h2 style="margin-top:0">Other platforms</h2>
-      <p><strong>Windows</strong> — available now.<br />
-      <strong>macOS</strong> — planned (requires separate build + audio capture work).<br />
-      <strong>Linux</strong> — planned.</p>
+      <h2>Comparison</h2>
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>CrownRecord</th>
+            <th>Loom</th>
+            <th>Zoom/Meet cloud</th>
+            <th>OBS</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Local file immediately</td>
+            <td class="yes">Yes</td>
+            <td>Limited</td>
+            <td>Often cloud only</td>
+            <td class="yes">Yes</td>
+          </tr>
+          <tr>
+            <td>No paid host plan to record</td>
+            <td class="yes">Yes</td>
+            <td>—</td>
+            <td>Often no (free tiers)</td>
+            <td class="yes">Yes</td>
+          </tr>
+          <tr>
+            <td>Webcam bubble</td>
+            <td class="yes">Yes</td>
+            <td class="yes">Yes</td>
+            <td>No</td>
+            <td>Manual</td>
+          </tr>
+          <tr>
+            <td>Simple for non-technical users</td>
+            <td class="yes">Yes</td>
+            <td class="yes">Yes</td>
+            <td>—</td>
+            <td>No</td>
+          </tr>
+          <tr>
+            <td>Invisible teleprompter</td>
+            <td class="yes">Yes</td>
+            <td>No</td>
+            <td>No</td>
+            <td>No</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <div class="card">
-      <h2 style="margin-top:0">Having issues?</h2>
-      <p>In the app, click <strong>Open log folder</strong>, attach the newest <code>crownrecord-*.log</code> file, and email
-      <a href="mailto:support@crownsoftech.com">support@crownsoftech.com</a>.</p>
+      <h2>WebM vs MP4</h2>
+      <ul>
+        <li><strong>WebM (default):</strong> Best quality/size in CrownRecord; plays in Chrome, Edge, Firefox, VLC.</li>
+        <li><strong>MP4:</strong> Select in app if supported — best for sharing on platforms that prefer MP4.</li>
+        <li>Nothing is uploaded to Crown Softech either way.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>FAQ</h2>
+      <dl class="faq">
+        <dt>Do I need to be the meeting host?</dt>
+        <dd>No. You record what appears in the meeting window on your computer. You do not need the host to enable Zoom/Meet cloud recording.</dd>
+
+        <dt>Does Crown Softech store my video?</dt>
+        <dd>No. Recordings are saved locally on your PC when you stop.</dd>
+
+        <dt>How is this different from Loom?</dt>
+        <dd>Loom focuses on instant cloud share links. CrownRecord is built for local download first — meetings, demos, and pitches without an upload step.</dd>
+
+        <dt>Can I use an external webcam and choose my microphone?</dt>
+        <dd>Yes. Pick devices in the Audio and Camera sections before recording (like Loom).</dd>
+
+        <dt>Will I see a preview while recording?</dt>
+        <dd>Yes. The app shows a live preview of the screen (and webcam bubble if enabled) while you record.</dd>
+
+        <dt>macOS or Linux?</dt>
+        <dd>Windows today. Mac and Linux are on the roadmap.</dd>
+      </dl>
+    </div>
+
+    <div class="card">
+      <h2>Support</h2>
+      <p>Email <a href="mailto:support@crownsoftech.com">support@crownsoftech.com</a>.
+      In the app, use <strong>Open log folder</strong> and attach <code>crownrecord-*.log</code>.</p>
     </div>
 
     <footer>
       © Crown Softech · <a href="https://crownsoftech.com">crownsoftech.com</a> ·
-      Part of the Crown product family (CrownWatch, CrownWP, CrownSoft).
+      Crown product family: CrownWatch, CrownWP, CrownSoft, CrownRecord.
     </footer>
   </div>
 </body>

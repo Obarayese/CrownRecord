@@ -1,72 +1,46 @@
-# Copy this to your Crown Softech website AI agent
+# Crownsoftech website agent — CrownRecord page
 
----
+Publish at: **https://crownsoftech.com/crownrecord/**
 
-## Task for crownsoftech.com
+## Source file
 
-Create a product page at **`/crownrecord/`** (or `/products/crownrecord/`) for **CrownRecord**, a free Windows desktop app by Crown Softech.
+Use **`website/crownrecord.html`** in repo https://github.com/Obarayese/CrownRecord as the content/layout base (hero, comparison table, FAQ, download, SEO).
 
-### Requirements
+## Must-have messaging
 
-1. Match existing Crown Softech site header/footer, fonts, and colors (CrownWatch / CrownWP style if shared).
-2. Primary CTA button: **Download for Windows** → `https://github.com/Obarayese/CrownRecord/releases/latest`
-3. Secondary CTA: **Contact support** → `mailto:support@crownsoftech.com`
-4. Link back to homepage: `https://crownsoftech.com`
-5. Add **Products** (or **Downloads**) menu item: **CrownRecord**
-6. Mobile-friendly, fast, no tracking required for this page.
-7. Do **not** embed the full Electron app — only marketing + download link.
+1. **No cloud hosting required** — users can record meetings immediately; nothing uploaded to Crown Softech before/during record.
+2. **Not dependent on Zoom/Meet host cloud record** — captures meeting window + computer audio locally.
+3. **Loom alternative with local download** — contrast Loom’s cloud-first share flow.
+4. **Free Windows app** by Crown Softech.
+5. **Formats:** default WebM; MP4 when supported in app or convert with VLC/HandBrake.
 
-### Optional reference HTML
+## Download button
 
-In the CrownRecord GitHub repo, see `website/crownrecord.html` for structure and copy. Adapt styling to the main site theme.
+Primary CTA → `https://github.com/Obarayese/CrownRecord/releases/latest`
 
-### Logo
+If releases page is empty, tell user maintainers must publish **v0.3.0** with Setup + Portable `.exe` (see DOWNLOAD.md).
 
-If the site has a Crown product icon style, use a **camera/record** motif with “CrownRecord” wordmark. App currently uses the default Electron icon until `build/icon.ico` is added to the repo.
+Optional secondary buttons after release exists:
 
-### Repo (for maintainers)
+- Installer: asset `CrownRecord-0.3.0-Setup.exe`
+- Portable: asset `CrownRecord-0.3.0-Portable.exe`
 
-- Source: https://github.com/Obarayese/CrownRecord  
-- Releases: https://github.com/Obarayese/CrownRecord/releases  
+## Navigation
 
----
+Add under **Products**: CrownRecord → `/crownrecord`
 
-## Page copy (use on crownsoftech.com)
+## SEO
 
-### Headline
+- Title: `CrownRecord — Free Local Screen Recorder | Crown Softech`
+- Meta description: meetings locally, Loom alternative, Zoom Meet Teams, no upload
+- Open Graph tags (in template)
 
-**CrownRecord** — Free screen recorder for Windows
+## Support
 
-### Subhead
+All pages: **support@crownsoftech.com**
 
-Record pitches, demos, and video calls with a Loom-style webcam bubble, invisible teleprompter, and crystal-clear 1080p — without paid Zoom or Google Meet cloud recording.
+## Do not claim
 
-### Bullets
-
-- **1080p recording** — VP9 video, Opus audio (mic + computer sound)
-- **Webcam bubble** — circular overlay, mirrored, adjustable size
-- **Invisible teleprompter** — read your script; it won’t appear in the final video
-- **Zoom, Google Meet, Teams** — capture the meeting window; ★ quick-select in the app
-- **Private by design** — recordings save on your PC; no upload to Crown Softech servers
-- **Free** — MIT licensed desktop app
-
-### How it works (3 steps)
-
-1. Download and install CrownRecord for Windows.  
-2. Choose your meeting or app window, enable mic + computer audio.  
-3. Record, stop, save as `.webm` — share anywhere you like.
-
-### Platforms
-
-- **Windows 10/11** — available now  
-- **macOS / Linux** — on the roadmap  
-
-### Support
-
-Problems? Email **support@crownsoftech.com** with the log file from the app (**Open log folder** in Help).
-
-### Footer line
-
-© Crown Softech · Part of the Crown family (CrownWatch, CrownWP, CrownSoft)
-
----
+- Official Zoom/Google integration
+- Automatic upload/share links (not in v0.3)
+- macOS/Linux availability (planned only)

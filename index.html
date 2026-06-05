@@ -10,42 +10,53 @@
 <body>
   <header class="app-header">
     <h1>CrownRecord</h1>
-    <p class="tagline">by Crown Softech · free recorder for meetings &amp; demos</p>
+    <p class="tagline">by Crown Softech · local save · no cloud upload</p>
   </header>
 
   <section class="panel meetings-panel">
-    <h2 class="meetings-title">Zoom &amp; Google Meet</h2>
+    <h2 class="meetings-title">Meetings (Zoom, Meet, Teams)</h2>
     <p class="meetings-copy">
-      Pick the <strong>★ meeting window</strong> below (Zoom Meeting, Chrome, Teams).
-      Enable <strong>Computer audio</strong> to capture other speakers — no paid Zoom/Meet cloud recording required.
+      Pick the <strong>★ meeting window</strong>. No host cloud recording required — capture locally.
+      Enable <strong>Computer audio</strong> for other participants.
     </p>
   </section>
 
   <section class="panel">
-    <label class="label" for="source-select">Capture source</label>
+    <label class="label" for="source-select">Screen or window</label>
     <select id="source-select" disabled>
       <option value="">Loading sources…</option>
     </select>
-    <button type="button" id="refresh-sources" class="btn secondary">Refresh</button>
+    <button type="button" id="refresh-sources" class="btn secondary">Refresh sources</button>
+  </section>
+
+  <section class="panel preview-panel" id="preview-panel">
+    <div class="preview-head">
+      <h2 class="meetings-title">Live preview</h2>
+      <span id="preview-badge" class="preview-badge" hidden>Recording</span>
+    </div>
+    <video id="preview" muted playsinline></video>
+    <canvas id="compose-canvas" hidden aria-hidden="true"></canvas>
+    <p id="preview-hint" class="hint">Shows screen + webcam bubble (when enabled) — same as your saved video.</p>
   </section>
 
   <section class="panel audio-panel">
     <div class="panel-head">
       <h2>Audio</h2>
+      <button type="button" id="refresh-devices" class="btn secondary btn-small">Refresh devices</button>
     </div>
     <label class="toggle-label">
       <input type="checkbox" id="mic-enabled" checked />
       <span>Microphone (your voice)</span>
     </label>
-    <label class="label" for="mic-select">Mic device</label>
+    <label class="label" for="mic-select">Microphone</label>
     <select id="mic-select">
       <option value="">Default microphone</option>
     </select>
     <label class="toggle-label audio-toggle-second">
       <input type="checkbox" id="system-audio-enabled" checked />
-      <span>Computer audio (apps, tabs, system sounds)</span>
+      <span>Computer audio (meeting / app sound)</span>
     </label>
-    <p class="audio-hint">Windows captures system audio with the selected screen/window source.</p>
+    <p class="audio-hint">Choose mic before recording — like Loom. System audio uses the selected window/screen.</p>
   </section>
 
   <section class="panel camera-panel">
@@ -56,9 +67,9 @@
         <span>Webcam bubble</span>
       </label>
     </div>
-    <label class="label" for="camera-select">Device</label>
-    <select id="camera-select" disabled>
-      <option value="">Enable camera to list devices</option>
+    <label class="label" for="camera-select">Camera (built-in or external)</label>
+    <select id="camera-select">
+      <option value="">Default camera</option>
     </select>
     <label class="slider-inline">
       Bubble size <span id="bubble-size-val">200</span>px
@@ -71,10 +82,13 @@
     </select>
   </section>
 
-  <section class="panel preview-panel">
-    <video id="preview" muted playsinline></video>
-    <canvas id="compose-canvas" hidden aria-hidden="true"></canvas>
-    <p id="preview-hint" class="hint">Select a window or screen, then start recording.</p>
+  <section class="panel">
+    <label class="label" for="export-format">Save format</label>
+    <select id="export-format">
+      <option value="webm">WebM (recommended — best quality)</option>
+      <option value="mp4">MP4 (if supported on this PC)</option>
+    </select>
+    <p class="audio-hint">File is saved on your computer when you stop — not uploaded to Crown Softech.</p>
   </section>
 
   <section class="panel controls-row">
@@ -87,8 +101,7 @@
       <h2>Teleprompter</h2>
       <button type="button" id="toggle-prompter" class="btn secondary">Open overlay</button>
     </div>
-    <textarea id="script-text" rows="8" placeholder="Paste your pitch script here…"></textarea>
-
+    <textarea id="script-text" rows="6" placeholder="Paste your script…"></textarea>
     <div class="sliders">
       <label>
         Font size <span id="font-size-val">28</span>px
@@ -99,7 +112,6 @@
         <input type="range" id="scroll-speed" min="10" max="120" value="40" />
       </label>
     </div>
-
     <div class="prompter-actions">
       <button type="button" id="scroll-play" class="btn secondary">Play scroll</button>
       <button type="button" id="scroll-pause" class="btn secondary">Pause</button>
@@ -110,6 +122,7 @@
   <section class="panel support-panel">
     <h2 class="meetings-title">Help</h2>
     <p class="support-copy">
+      <a href="https://crownsoftech.com/crownrecord" target="_blank" rel="noopener">crownsoftech.com/crownrecord</a><br />
       Support: <a href="mailto:support@crownsoftech.com">support@crownsoftech.com</a><br />
       <button type="button" id="open-logs" class="btn secondary btn-small">Open log folder</button>
       <span id="log-path" class="log-path"></span>

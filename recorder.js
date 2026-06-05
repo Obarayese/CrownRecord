@@ -2,7 +2,12 @@ const TARGET_WIDTH = 1920;
 const TARGET_HEIGHT = 1080;
 const VIDEO_BITRATE = 12_000_000;
 const AUDIO_BITRATE = 256_000;
-const PREFERRED_MIME = 'video/webm;codecs=vp9,opus';
+const PREFERRED_WEBM = 'video/webm;codecs=vp9,opus';
+const MP4_CANDIDATES = [
+  'video/mp4;codecs=avc1,mp4a.40.2',
+  'video/mp4;codecs=h264,aac',
+  'video/mp4',
+];
 const MIC_GAIN = 1;
 const SYSTEM_AUDIO_GAIN = 0.85;
 const COMPOSE_FPS = 30;
@@ -43,6 +48,11 @@ const scrollSpeedVal = document.getElementById('scroll-speed-val');
 const scrollPlay = document.getElementById('scroll-play');
 const scrollPause = document.getElementById('scroll-pause');
 const scrollReset = document.getElementById('scroll-reset');
+const exportFormat = document.getElementById('export-format');
+const refreshDevicesBtn = document.getElementById('refresh-devices');
+const previewPanel = document.getElementById('preview-panel');
+const previewHint = document.getElementById('preview-hint');
+const previewBadge = document.getElementById('preview-badge');
 
 let mediaStream = null;
 let micStream = null;
@@ -79,13 +89,41 @@ function logEvent(level, message, meta) {
 }
 
 function pickMimeType() {
-  if (MediaRecorder.isTypeSupported(PREFERRED_MIME)) return PREFERRED_MIME;
+  const wantMp4 = exportFormat?.value === 'mp4';
+
+  if (wantMp4) {
+    const mp4 = MP4_CANDIDATES.find((t) => MediaRecorder.isTypeSupported(t));
+    if (mp4) return mp4;
+    setStatus('MP4 encoding not supported here — recording as WebM instead.', '');
+  }
+
+  if (MediaRecorder.isTypeSupported(PREFERRED_WEBM)) return PREFERRED_WEBM;
   const fallbacks = [
     'video/webm;codecs=vp8,opus',
     'video/webm;codecs=vp9',
     'video/webm',
   ];
   return fallbacks.find((t) => MediaRecorder.isTypeSupported(t)) || '';
+}
+
+function extensionForMime(mimeType) {
+  return mimeType && mimeType.includes('mp4') ? 'mp4' : 'webm';
+}
+
+function updateRecordingPreviewUi() {
+  if (!previewPanel) return;
+  previewPanel.classList.toggle('is-recording', isRecording);
+  if (previewBadge) {
+    previewBadge.hidden = !isRecording;
+  }
+  if (previewHint) {
+    if (isRecording) {
+      const cam = cameraEnabled.checked && cameraStream;
+      previewHint.textContent = cam
+        ? 'Live preview — screen + webcam bubble (saved to your file).'
+        : 'Live preview — screen capture (saved to your file).';
+    }
+  }
 }
 
 function shouldComposite() {
@@ -467,6 +505,27 @@ async function updatePreviewOutput() {
   }
 
   await preview.play().catch(() => {});
+  updateRecordingPreviewUi();
+}
+
+async function requestDeviceLabels() {
+  try {
+    const tmp = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: { width: 1, height: 1 },
+    });
+    tmp.getTracks().forEach((t) => t.stop());
+  } catch {
+    /* labels may stay generic until record */
+  }
+}
+
+async function refreshAllDevices() {
+  await requestDeviceLabels();
+  await loadMicDevices();
+  await loadCameraDevices();
+  cameraSelect.disabled = false;
+  setStatus('Microphone and camera lists updated.', 'ok');
 }
 
 async function loadCameraDevices() {
@@ -494,7 +553,6 @@ async function loadCameraDevices() {
     cameraSelect.appendChild(opt);
   }
 
-  cameraSelect.disabled = !cameraEnabled.checked;
   if (prev && [...cameraSelect.options].some((o) => o.value === prev)) {
     cameraSelect.value = prev;
   }
@@ -531,14 +589,12 @@ async function startCamera() {
     await updatePreviewOutput();
   } catch (err) {
     cameraEnabled.checked = false;
-    cameraSelect.disabled = true;
     setStatus(`Camera blocked or unavailable: ${err.message}`, 'error');
   }
 }
 
 async function onCameraToggle() {
   if (cameraEnabled.checked) {
-    cameraSelect.disabled = false;
     await loadCameraDevices();
     if (!cameraSelect.value && cameraSelect.options.length) {
       cameraSelect.selectedIndex = 0;
@@ -552,7 +608,6 @@ async function onCameraToggle() {
     await startCamera();
   } else {
     stopCamera();
-    cameraSelect.disabled = true;
     await updatePreviewOutput();
     if (mediaStream) setStatus('Camera off. Screen preview active.', 'ok');
   }
@@ -628,8 +683,8 @@ async function attachStream(sourceId) {
           ? ' · system audio pending'
           : '';
 
-    document.getElementById('preview-hint').textContent =
-      'Saved video stays clean — REC/timer only appear on the floating HUD while you record.';
+    previewHint.textContent =
+      'Live preview below. Pick mic, camera, and format before Record. REC/timer only on floating HUD, not in saved video.';
 
     if (wasCameraOn) {
       if (cameraDevice) cameraSelect.value = cameraDevice;
@@ -659,10 +714,12 @@ async function startRecording() {
   }
 
   isRecording = true;
+  updateRecordingPreviewUi();
 
   try {
     await ensureScreenVideo();
-    if (cameraEnabled.checked && cameraStream) {
+    if (cameraEnabled.checked) {
+      if (!cameraStream) await startCamera();
       await ensureCameraVideo();
     }
     await updatePreviewOutput();
@@ -718,6 +775,7 @@ async function startRecording() {
 
     const blob = new Blob(chunks, { type: mimeType });
     const buffer = await blob.arrayBuffer();
+    const extension = extensionForMime(mimeType);
 
     recordBtn.disabled = false;
     stopBtn.disabled = true;
@@ -726,11 +784,18 @@ async function startRecording() {
     cameraEnabled.disabled = false;
     bubbleSize.disabled = false;
     bubbleCorner.disabled = false;
-    cameraSelect.disabled = !cameraEnabled.checked;
+    cameraSelect.disabled = false;
+    if (exportFormat) exportFormat.disabled = false;
+    if (refreshDevicesBtn) refreshDevicesBtn.disabled = false;
     setAudioControlsDisabled(false);
 
+    updateRecordingPreviewUi();
     setStatus('Saving…');
-    const result = await window.crownRecord.saveRecording(buffer);
+    const result = await window.crownRecord.saveRecording({
+      buffer,
+      extension,
+      mimeType,
+    });
 
     if (result.saved) {
       setStatus(`Saved: ${result.filePath}`, 'ok');
@@ -752,6 +817,8 @@ async function startRecording() {
   cameraEnabled.disabled = true;
   bubbleSize.disabled = true;
   bubbleCorner.disabled = true;
+  if (exportFormat) exportFormat.disabled = true;
+  if (refreshDevicesBtn) refreshDevicesBtn.disabled = true;
   setAudioControlsDisabled(true);
 
   const camNote = cameraStream ? ' · webcam' : '';
@@ -874,7 +941,20 @@ async function initSupportUi() {
   });
 }
 
+if (refreshDevicesBtn) {
+  refreshDevicesBtn.addEventListener('click', refreshAllDevices);
+}
+
+if (exportFormat) {
+  exportFormat.addEventListener('change', () => {
+    const mp4Ok = MP4_CANDIDATES.some((t) => MediaRecorder.isTypeSupported(t));
+    if (exportFormat.value === 'mp4' && !mp4Ok) {
+      setStatus('MP4 may not be available on this PC — WebM will be used if needed.', '');
+    }
+  });
+}
+
 loadSources();
-loadCameraDevices();
 loadMicDevices();
+requestDeviceLabels().then(() => loadCameraDevices());
 initSupportUi();

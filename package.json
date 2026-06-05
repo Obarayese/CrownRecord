@@ -38,13 +38,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"],
-          "artifactName": "CrownRecord-${version}-Setup.${ext}"
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"],
-          "artifactName": "CrownRecord-${version}-Portable.${ext}"
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },
@@ -52,7 +54,11 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "CrownRecord"
+      "shortcutName": "CrownRecord",
+      "artifactName": "CrownRecord-${version}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "CrownRecord-${version}-Portable.${ext}"
     }
   }
 }
