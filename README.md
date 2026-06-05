@@ -10,7 +10,7 @@
 
 ## Download
 
-Windows installers: see **[DOWNLOAD.md](./DOWNLOAD.md)** and [GitHub Releases](https://github.com/CrownSoftech/CrownRecord/releases).
+Windows installers: see **[DOWNLOAD.md](./DOWNLOAD.md)** and [GitHub Releases](https://github.com/Obarayese/CrownRecord/releases).
 
 ## Logs (for you and users)
 

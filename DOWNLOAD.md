@@ -4,7 +4,7 @@ From **[Crown Softech](https://crownsoftech.com)** · Support: **support@crownso
 
 ## Windows users
 
-1. Open **[GitHub Releases](https://github.com/CrownSoftech/CrownRecord/releases/latest)** (after you publish the repo).
+1. Open **[GitHub Releases](https://github.com/Obarayese/CrownRecord/releases/latest)**.
 2. Download **`CrownRecord-*-Setup.exe`** or **`*-Portable.exe`**.
 3. Allow screen, mic, and camera permissions when asked.
 

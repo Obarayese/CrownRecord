@@ -2,7 +2,7 @@
 
 ## 1. Public GitHub repo (recommended name)
 
-**`CrownSoftech/CrownRecord`** — matches CrownWatch / CrownWP style.
+**`Obarayese/CrownRecord`** — https://github.com/Obarayese/CrownRecord
 
 ### Create repo (run locally)
 
@@ -11,13 +11,14 @@ cd "C:\waflo_work\Loom Alternative"
 git init
 git add .
 git commit -m "CrownRecord v0.3 — Crown Softech screen recorder"
-gh repo create CrownSoftech/CrownRecord --public --source=. --remote=origin --push
+git remote add origin https://github.com/Obarayese/CrownRecord.git
+git push -u origin main
 ```
 
 If `gh` is not installed: create an empty public repo on GitHub, then:
 
 ```powershell
-git remote add origin https://github.com/CrownSoftech/CrownRecord.git
+git remote add origin https://github.com/Obarayese/CrownRecord.git
 git branch -M main
 git push -u origin main
 ```
@@ -35,7 +36,7 @@ Upload from `dist/` to **GitHub → Releases → v0.3.0**:
 - `CrownRecord-0.3.0-Portable.exe`
 
 Update the download link on the website to:
-`https://github.com/CrownSoftech/CrownRecord/releases/latest`
+`https://github.com/Obarayese/CrownRecord/releases/latest`
 
 ---
 
