@@ -1,46 +1,23 @@
-# Crownsoftech website agent — CrownRecord page
+# Crownsoftech website agent — quick reference
 
-Publish at: **https://crownsoftech.com/crownrecord/**
+**Full copy-paste prompt:** see **`docs/CROWNSOFTECH-AGENT.md`**
 
-## Source file
+## Page
 
-Use **`website/crownrecord.html`** in repo https://github.com/Obarayese/CrownRecord as the content/layout base (hero, comparison table, FAQ, download, SEO).
+- URL: **https://crownsoftech.com/crownrecord/**
+- Template: **`website/crownrecord.html`** in https://github.com/Obarayese/CrownRecord
 
-## Must-have messaging
+## Download
 
-1. **No cloud hosting required** — users can record meetings immediately; nothing uploaded to Crown Softech before/during record.
-2. **Not dependent on Zoom/Meet host cloud record** — captures meeting window + computer audio locally.
-3. **Loom alternative with local download** — contrast Loom’s cloud-first share flow.
-4. **Free Windows app** by Crown Softech.
-5. **Formats:** default WebM; MP4 when supported in app or convert with VLC/HandBrake.
+- **https://github.com/Obarayese/CrownRecord/releases/latest**
+- Assets: `CrownRecord-0.3.1-Setup.exe`, `CrownRecord-0.3.1-Portable.exe`
 
-## Download button
+## Messaging (3 lines)
 
-Primary CTA → `https://github.com/Obarayese/CrownRecord/releases/latest`
+1. Record meetings **without cloud hosting** — local save on PC.  
+2. **Loom alternative** with download to disk; Zoom/Meet/Teams via window capture.  
+3. Free Windows · **support@crownsoftech.com**
 
-If releases page is empty, tell user maintainers must publish **v0.3.0** with Setup + Portable `.exe` (see DOWNLOAD.md).
+## Nav
 
-Optional secondary buttons after release exists:
-
-- Installer: asset `CrownRecord-0.3.0-Setup.exe`
-- Portable: asset `CrownRecord-0.3.0-Portable.exe`
-
-## Navigation
-
-Add under **Products**: CrownRecord → `/crownrecord`
-
-## SEO
-
-- Title: `CrownRecord — Free Local Screen Recorder | Crown Softech`
-- Meta description: meetings locally, Loom alternative, Zoom Meet Teams, no upload
-- Open Graph tags (in template)
-
-## Support
-
-All pages: **support@crownsoftech.com**
-
-## Do not claim
-
-- Official Zoom/Google integration
-- Automatic upload/share links (not in v0.3)
-- macOS/Linux availability (planned only)
+Products → **CrownRecord**

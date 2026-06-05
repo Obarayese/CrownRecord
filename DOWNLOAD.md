@@ -28,7 +28,7 @@ $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
 npm run build:win
 ```
 
-Artifacts in `dist/`. See [docs/PUBLISH-WEBSITE-AND-GITHUB.md](./docs/PUBLISH-WEBSITE-AND-GITHUB.md).
+Artifacts in `dist/`. Maintainer release steps: **[docs/RELEASE-GUIDE.md](./docs/RELEASE-GUIDE.md)**.
 
 ## Platforms
 
