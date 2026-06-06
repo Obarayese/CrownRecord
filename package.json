@@ -1,6 +1,6 @@
 {
   "name": "crownrecord",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "CrownRecord — free Windows screen recorder by Crown Softech",
   "main": "main.js",
   "author": "Crown Softech <support@crownsoftech.com>",
@@ -8,6 +8,7 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "start:built": "dist\\win-unpacked\\CrownRecord.exe",
     "dev": "electron .",
     "build": "electron-builder",
     "build:win": "electron-builder --win"

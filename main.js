@@ -18,6 +18,8 @@ let hudWindow = null;
 let mirrorWindow = null;
 
 const isWindows = process.platform === 'win32';
+const iconPath = path.join(__dirname, 'build', 'icon.ico');
+const appIcon = fs.existsSync(iconPath) ? iconPath : undefined;
 
 if (isWindows) {
   app.setAppUserModelId('com.crownsoftech.crownrecord');
@@ -182,9 +184,8 @@ function createMainWindow() {
     minWidth: 420,
     minHeight: 720,
     title: 'CrownRecord',
-    icon: fs.existsSync(path.join(__dirname, 'build', 'icon.ico'))
-      ? path.join(__dirname, 'build', 'icon.ico')
-      : undefined,
+    icon: appIcon,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload-main.js'),
       contextIsolation: true,
@@ -198,6 +199,7 @@ function createMainWindow() {
   });
 
   mainWindow.loadFile('index.html');
+  mainWindow.setMenuBarVisibility(false);
   mainWindow.on('closed', () => {
     mainWindow = null;
   });

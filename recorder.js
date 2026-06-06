@@ -80,10 +80,12 @@ let composeCtx = null;
 let recordWidth = 1280;
 let recordHeight = 720;
 
-composeCtx = composeCanvas.getContext('2d');
-composeCtx.imageSmoothingEnabled = true;
-composeCtx.imageSmoothingQuality = 'high';
-applyRecordDimensions();
+composeCtx = composeCanvas?.getContext('2d');
+if (composeCtx) {
+  composeCtx.imageSmoothingEnabled = true;
+  composeCtx.imageSmoothingQuality = 'high';
+  applyRecordDimensions();
+}
 
 function getTargetDimensions() {
   if (qualityMode?.value === '1080') return { w: 1920, h: 1080, bitrate: 12_000_000 };
@@ -94,8 +96,10 @@ function applyRecordDimensions() {
   const { w, h } = getTargetDimensions();
   recordWidth = w;
   recordHeight = h;
-  composeCanvas.width = w;
-  composeCanvas.height = h;
+  if (composeCanvas) {
+    composeCanvas.width = w;
+    composeCanvas.height = h;
+  }
 }
 
 function setStatus(msg, type = '') {
@@ -320,18 +324,36 @@ function getVideoStreamForRecording() {
   return mediaStream;
 }
 
-function desktopVideoConstraints(sourceId) {
-  return {
-    mandatory: {
-      chromeMediaSource: 'desktop',
-      chromeMediaSourceId: sourceId,
-      minWidth: recordWidth,
-      minHeight: recordHeight,
-      maxWidth: recordWidth,
-      maxHeight: recordHeight,
-      maxFrameRate: 30,
-    },
+function desktopVideoConstraints(sourceId, tier = 'target') {
+  const base = {
+    chromeMediaSource: 'desktop',
+    chromeMediaSourceId: sourceId,
+    maxFrameRate: 30,
   };
+
+  if (tier === 'target') {
+    return {
+      mandatory: {
+        ...base,
+        maxWidth: recordWidth,
+        maxHeight: recordHeight,
+      },
+    };
+  }
+
+  if (tier === 'legacy') {
+    return {
+      mandatory: {
+        ...base,
+        minWidth: recordWidth,
+        minHeight: recordHeight,
+        maxWidth: recordWidth,
+        maxHeight: recordHeight,
+      },
+    };
+  }
+
+  return { mandatory: base };
 }
 
 function desktopAudioConstraints(sourceId) {
@@ -340,20 +362,56 @@ function desktopAudioConstraints(sourceId) {
   };
 }
 
-async function captureDesktopStream(sourceId, includeSystemAudio) {
-  const video = desktopVideoConstraints(sourceId);
+async function bindPreviewStream(stream) {
+  preview.srcObject = stream;
+  await new Promise((resolve) => {
+    if (preview.readyState >= 1) {
+      resolve();
+      return;
+    }
+    preview.onloadedmetadata = () => resolve();
+    setTimeout(resolve, 1500);
+  });
+  await preview.play().catch(() => {});
+}
+
+async function getDesktopStream(sourceId, videoConstraints, includeSystemAudio) {
   if (!includeSystemAudio) {
-    return navigator.mediaDevices.getUserMedia({ audio: false, video });
+    return navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
   }
   try {
     return await navigator.mediaDevices.getUserMedia({
       audio: desktopAudioConstraints(sourceId),
-      video,
+      video: videoConstraints,
     });
   } catch (err) {
-    setStatus(`System audio unavailable — video only. (${err.message})`, 'error');
-    return navigator.mediaDevices.getUserMedia({ audio: false, video });
+    return navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
   }
+}
+
+async function captureDesktopStream(sourceId, includeSystemAudio) {
+  const tiers = ['target', 'legacy', 'basic'];
+  let lastError = null;
+
+  for (const tier of tiers) {
+    try {
+      const stream = await getDesktopStream(
+        sourceId,
+        desktopVideoConstraints(sourceId, tier),
+        includeSystemAudio && tier === 'target',
+      );
+      const track = stream?.getVideoTracks()[0];
+      if (track) {
+        logEvent('info', 'Capture ok', { tier, label: track.label });
+        return stream;
+      }
+    } catch (err) {
+      lastError = err;
+      logEvent('warn', 'Capture attempt failed', { tier, message: err.message });
+    }
+  }
+
+  throw lastError || new Error('Could not capture this source');
 }
 
 function formatCaptureStatus(stream, audioNote) {
@@ -491,12 +549,12 @@ async function updatePreviewOutput() {
     ensureComposedStream();
     if (!composeRafId) drawComposeFrame();
     preview.srcObject = composedPreviewStream;
+    await preview.play().catch(() => {});
   } else {
     stopComposeLoop();
     stopComposedPreviewStream();
-    preview.srcObject = mediaStream;
+    await bindPreviewStream(mediaStream);
   }
-  await preview.play().catch(() => {});
   updateRecordingPreviewUi();
 }
 
@@ -539,9 +597,9 @@ async function loadSources() {
     }
     populateSourceSelect(sources);
     sourceSelect.disabled = false;
-    recordBtn.disabled = false;
     setStatus(`${sources.length} sources — grouped by screen, meetings, and apps.`);
     await attachStream(sourceSelect.value);
+    if (mediaStream) recordBtn.disabled = false;
   } catch (err) {
     logEvent('error', 'Sources failed', { message: err.message });
     setStatus(`Sources failed: ${err.message}`, 'error');
@@ -573,13 +631,13 @@ async function attachStream(sourceId) {
       if (cameraDevice) cameraSelect.value = cameraDevice;
       await startCamera();
     } else {
-      preview.srcObject = mediaStream;
-      await preview.play().catch(() => {});
+      await bindPreviewStream(mediaStream);
       setStatus(formatCaptureStatus(mediaStream, audioNote), 'ok');
     }
+    recordBtn.disabled = false;
   } catch (err) {
     logEvent('error', 'Capture failed', { message: err.message });
-    setStatus(`Capture failed: ${err.message}`, 'error');
+    setStatus(`Capture failed: ${err.message}. Try Entire screen or refresh sources.`, 'error');
     recordBtn.disabled = true;
   }
 }
@@ -616,7 +674,7 @@ async function onCameraToggle() {
   }
   if (!mediaStream) {
     cameraEnabled.checked = false;
-    setStatus('Select a screen source first.', 'error');
+    setStatus('Pick a source and wait for preview before enabling webcam.', 'error');
     return;
   }
   await loadCameraDevices();
@@ -786,11 +844,6 @@ function sendPrompterControl(action, extra = {}) {
   });
 }
 
-window.crownRecord.onRecordingCommand((action) => {
-  if (action === 'stop') stopRecording();
-  if (action === 'pause') togglePauseRecording();
-});
-
 navigator.mediaDevices.addEventListener('devicechange', async () => {
   const prevMic = micSelect.value;
   await refreshAllDevices(false);
@@ -857,7 +910,32 @@ async function initSupportUi() {
   });
 }
 
-loadSources();
-loadMicDevices();
-requestDeviceLabels().then(loadCameraDevices);
-initSupportUi();
+function boot() {
+  if (!window.crownRecord) {
+    setStatus('App bridge failed to load. Restart CrownRecord.', 'error');
+    return;
+  }
+
+  window.crownRecord.onRecordingCommand((action) => {
+    if (action === 'stop') stopRecording();
+    if (action === 'pause') togglePauseRecording();
+  });
+
+  loadSources();
+  loadMicDevices();
+  requestDeviceLabels().then(loadCameraDevices);
+  initSupportUi();
+}
+
+window.addEventListener('error', (e) => {
+  setStatus(`Error: ${e.message}`, 'error');
+  logEvent('error', 'Renderer error', { message: e.message });
+});
+
+window.addEventListener('unhandledrejection', (e) => {
+  const msg = e.reason?.message || String(e.reason);
+  setStatus(`Error: ${msg}`, 'error');
+  logEvent('error', 'Unhandled rejection', { message: msg });
+});
+
+boot();
