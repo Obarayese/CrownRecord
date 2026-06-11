@@ -21,6 +21,36 @@ const isWindows = process.platform === 'win32';
 const iconPath = path.join(__dirname, 'build', 'icon.ico');
 const appIcon = fs.existsSync(iconPath) ? iconPath : undefined;
 
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
+
+function destroyWindow(win) {
+  if (win && !win.isDestroyed()) {
+    win.removeAllListeners('close');
+    win.destroy();
+  }
+}
+
+function closeAllAuxiliaryWindows() {
+  destroyWindow(mirrorWindow);
+  mirrorWindow = null;
+  destroyWindow(hudWindow);
+  hudWindow = null;
+  destroyWindow(teleprompterWindow);
+  teleprompterWindow = null;
+}
+
+function childWindowOptions(extra = {}) {
+  const opts = { ...extra };
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    opts.parent = mainWindow;
+  }
+  return opts;
+}
+
 if (isWindows) {
   app.setAppUserModelId('com.crownsoftech.crownrecord');
 }
@@ -56,7 +86,7 @@ function createTeleprompterWindow() {
 
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
-  teleprompterWindow = new BrowserWindow({
+  teleprompterWindow = new BrowserWindow(childWindowOptions({
     width: 520,
     height: 360,
     x: Math.floor(width * 0.5 - 260),
@@ -74,7 +104,7 @@ function createTeleprompterWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-  });
+  }));
 
   applyCaptureExclusion(teleprompterWindow);
   teleprompterWindow.loadFile('teleprompter.html');
@@ -92,7 +122,7 @@ function createHudWindow() {
 
   const { width } = screen.getPrimaryDisplay().workAreaSize;
 
-  hudWindow = new BrowserWindow({
+  hudWindow = new BrowserWindow(childWindowOptions({
     width: 360,
     height: 64,
     x: Math.max(16, width - 380),
@@ -111,7 +141,7 @@ function createHudWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-  });
+  }));
 
   applyCaptureExclusion(hudWindow);
   hudWindow.loadFile('hud.html');
@@ -123,9 +153,8 @@ function createHudWindow() {
 }
 
 function closeCameraMirrorWindow() {
-  if (mirrorWindow && !mirrorWindow.isDestroyed()) {
-    mirrorWindow.close();
-  }
+  destroyWindow(mirrorWindow);
+  mirrorWindow = null;
 }
 
 function createCameraMirrorWindow(config) {
@@ -139,7 +168,7 @@ function createCameraMirrorWindow(config) {
   const x = corner === 'br' ? width - winSize - margin : margin;
   const y = height - winSize - margin;
 
-  mirrorWindow = new BrowserWindow({
+  mirrorWindow = new BrowserWindow(childWindowOptions({
     width: winSize,
     height: winSize,
     x,
@@ -158,7 +187,7 @@ function createCameraMirrorWindow(config) {
       contextIsolation: true,
       nodeIntegration: false,
     },
-  });
+  }));
 
   applyCaptureExclusion(mirrorWindow);
   mirrorWindow.loadFile('mirror.html');
@@ -200,6 +229,9 @@ function createMainWindow() {
 
   mainWindow.loadFile('index.html');
   mainWindow.setMenuBarVisibility(false);
+  mainWindow.on('close', () => {
+    closeAllAuxiliaryWindows();
+  });
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -232,6 +264,8 @@ function setupProcessLogging() {
 }
 
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return;
+
   app.setName('CrownRecord');
   logger.init(app.getPath('userData'));
   logger.info('App ready', {
@@ -247,6 +281,22 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
+});
+
+app.on('second-instance', () => {
+  if (!gotSingleInstanceLock) return;
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  } else {
+    createMainWindow();
+  }
+});
+
+app.on('before-quit', () => {
+  closeAllAuxiliaryWindows();
 });
 
 app.on('window-all-closed', () => {
