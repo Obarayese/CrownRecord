@@ -13,7 +13,13 @@ Free Windows screen recorder by **[Crown Softech](https://crownsoftech.com)**.
    - **CrownRecord-*-Portable.exe** — run without installing
 3. Allow **screen**, **microphone**, and **camera** when Windows asks.
 
-## What’s new in v0.4.0
+## What’s new in v0.4.2
+
+- **Fixed black preview** — uses Electron’s recommended screen capture API
+- **Fixed app not fully quitting** — teleprompter, HUD, and mirror now close for real
+- **Single instance** — no duplicate teleprompters on relaunch
+
+### Also in v0.4.x
 
 - **720p default** for smoother recording on slower PCs
 - **Floating Pause/Stop bar** while the main window minimizes

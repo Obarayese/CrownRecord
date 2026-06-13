@@ -324,7 +324,7 @@ function getVideoStreamForRecording() {
   return mediaStream;
 }
 
-function desktopVideoConstraints(sourceId, tier = 'target') {
+function desktopVideoConstraints(sourceId, tier = 'basic') {
   const base = {
     chromeMediaSource: 'desktop',
     chromeMediaSourceId: sourceId,
@@ -335,18 +335,6 @@ function desktopVideoConstraints(sourceId, tier = 'target') {
     return {
       mandatory: {
         ...base,
-        maxWidth: recordWidth,
-        maxHeight: recordHeight,
-      },
-    };
-  }
-
-  if (tier === 'legacy') {
-    return {
-      mandatory: {
-        ...base,
-        minWidth: recordWidth,
-        minHeight: recordHeight,
         maxWidth: recordWidth,
         maxHeight: recordHeight,
       },
@@ -389,8 +377,30 @@ async function getDesktopStream(sourceId, videoConstraints, includeSystemAudio) 
   }
 }
 
-async function captureDesktopStream(sourceId, includeSystemAudio) {
-  const tiers = ['target', 'legacy', 'basic'];
+async function bindPreviewStream(stream) {
+  preview.srcObject = stream;
+  await new Promise((resolve) => {
+    if (preview.readyState >= 1) {
+      resolve();
+      return;
+    }
+    preview.onloadedmetadata = () => resolve();
+    setTimeout(resolve, 2000);
+  });
+  await preview.play().catch(() => {});
+}
+
+async function waitForPreviewFrames(videoEl, timeoutMs = 4000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) return true;
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  return false;
+}
+
+async function captureDesktopStreamLegacy(sourceId, includeSystemAudio) {
+  const tiers = ['basic', 'target'];
   let lastError = null;
 
   for (const tier of tiers) {
@@ -398,20 +408,40 @@ async function captureDesktopStream(sourceId, includeSystemAudio) {
       const stream = await getDesktopStream(
         sourceId,
         desktopVideoConstraints(sourceId, tier),
-        includeSystemAudio && tier === 'target',
+        includeSystemAudio && tier === 'basic',
       );
       const track = stream?.getVideoTracks()[0];
       if (track) {
-        logEvent('info', 'Capture ok', { tier, label: track.label });
+        logEvent('info', 'Capture ok (legacy)', { tier, label: track.label });
         return stream;
       }
     } catch (err) {
       lastError = err;
-      logEvent('warn', 'Capture attempt failed', { tier, message: err.message });
+      logEvent('warn', 'Legacy capture failed', { tier, message: err.message });
     }
   }
 
   throw lastError || new Error('Could not capture this source');
+}
+
+async function captureDesktopStream(sourceId, includeSystemAudio) {
+  await window.crownRecord.setCaptureSource(sourceId);
+
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: includeSystemAudio,
+    });
+    const track = stream?.getVideoTracks()[0];
+    if (track) {
+      logEvent('info', 'Capture ok (displayMedia)', { label: track.label });
+      return stream;
+    }
+  } catch (err) {
+    logEvent('warn', 'getDisplayMedia failed', { message: err.message });
+  }
+
+  return captureDesktopStreamLegacy(sourceId, includeSystemAudio);
 }
 
 function formatCaptureStatus(stream, audioNote) {
@@ -632,7 +662,15 @@ async function attachStream(sourceId) {
       await startCamera();
     } else {
       await bindPreviewStream(mediaStream);
-      setStatus(formatCaptureStatus(mediaStream, audioNote), 'ok');
+      const hasFrames = await waitForPreviewFrames(preview);
+      if (!hasFrames) {
+        setStatus(
+          'Preview is black — try Entire screen, or bring the window to the front and refresh.',
+          'error',
+        );
+      } else {
+        setStatus(formatCaptureStatus(mediaStream, audioNote), 'ok');
+      }
     }
     recordBtn.disabled = false;
   } catch (err) {
@@ -923,9 +961,12 @@ function boot() {
 
   loadSources();
   loadMicDevices();
-  requestDeviceLabels().then(loadCameraDevices);
   initSupportUi();
 }
+
+window.addEventListener('beforeunload', () => {
+  stopPreviewStream();
+});
 
 window.addEventListener('error', (e) => {
   setStatus(`Error: ${e.message}`, 'error');

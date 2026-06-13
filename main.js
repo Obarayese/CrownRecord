@@ -16,6 +16,8 @@ let mainWindow = null;
 let teleprompterWindow = null;
 let hudWindow = null;
 let mirrorWindow = null;
+let selectedCaptureSourceId = null;
+let isQuitting = false;
 
 const isWindows = process.platform === 'win32';
 const iconPath = path.join(__dirname, 'build', 'icon.ico');
@@ -44,11 +46,26 @@ function closeAllAuxiliaryWindows() {
 }
 
 function childWindowOptions(extra = {}) {
-  const opts = { ...extra };
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    opts.parent = mainWindow;
+  return { ...extra };
+}
+
+function closeHudWindow() {
+  destroyWindow(hudWindow);
+  hudWindow = null;
+}
+
+function destroyAllWindows() {
+  closeAllAuxiliaryWindows();
+  for (const win of BrowserWindow.getAllWindows()) {
+    destroyWindow(win);
   }
-  return opts;
+}
+
+function forceQuit() {
+  if (isQuitting) return;
+  isQuitting = true;
+  destroyAllWindows();
+  app.exit(0);
 }
 
 if (isWindows) {
@@ -234,11 +251,42 @@ function createMainWindow() {
   });
   mainWindow.on('closed', () => {
     mainWindow = null;
+    if (!isQuitting && BrowserWindow.getAllWindows().length === 0) {
+      forceQuit();
+    }
   });
 }
 
 function setupSessionPermissions() {
   const ses = session.defaultSession;
+
+  ses.setDisplayMediaRequestHandler(
+    async (request, callback) => {
+      try {
+        const sources = await desktopCapturer.getSources({
+          types: ['window', 'screen'],
+          thumbnailSize: { width: 0, height: 0 },
+        });
+        const source =
+          sources.find((s) => s.id === selectedCaptureSourceId) ||
+          sources[0];
+        if (!source) {
+          callback({});
+          return;
+        }
+        const result = { video: source };
+        if (request.audioRequested) {
+          result.audio = 'loopback';
+        }
+        logger.info('DisplayMedia capture', { id: source.id, name: source.name });
+        callback(result);
+      } catch (err) {
+        logger.error('DisplayMedia handler failed', { message: err.message });
+        callback({});
+      }
+    },
+    { useSystemPicker: false },
+  );
 
   ses.setPermissionRequestHandler((_webContents, permission, callback) => {
     const allowed = ['media', 'display-capture', 'speaker-selection'];
@@ -296,11 +344,12 @@ app.on('second-instance', () => {
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   closeAllAuxiliaryWindows();
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  if (process.platform !== 'darwin') forceQuit();
 });
 
 ipcMain.handle('get-log-info', () => logger.getLogInfo());
@@ -340,6 +389,11 @@ ipcMain.on('hud-action', (_e, action) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('recording-command', action);
   }
+});
+
+ipcMain.handle('set-capture-source', (_e, sourceId) => {
+  selectedCaptureSourceId = sourceId;
+  return true;
 });
 
 ipcMain.handle('get-sources', async () => {
@@ -404,16 +458,16 @@ ipcMain.handle('close-camera-mirror', () => {
 });
 
 ipcMain.on('hud-state', (_e, state) => {
+  if (!state.recording) {
+    closeHudWindow();
+    return;
+  }
   if (!hudWindow || hudWindow.isDestroyed()) {
-    if (state.recording) createHudWindow();
+    createHudWindow();
   }
   if (hudWindow && !hudWindow.isDestroyed()) {
     hudWindow.webContents.send('hud-update', state);
-    if (state.recording) {
-      hudWindow.show();
-    } else {
-      hudWindow.hide();
-    }
+    hudWindow.show();
   }
 });
 

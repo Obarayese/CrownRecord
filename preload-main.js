@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('crownRecord', {
   getSources: () => ipcRenderer.invoke('get-sources'),
+  setCaptureSource: (sourceId) => ipcRenderer.invoke('set-capture-source', sourceId),
   openTeleprompter: () => ipcRenderer.invoke('open-teleprompter'),
   closeTeleprompter: () => ipcRenderer.invoke('close-teleprompter'),
   setTeleprompterText: (text) => ipcRenderer.invoke('teleprompter-set-text', text),
