@@ -79,6 +79,7 @@ let cameraVideo = null;
 let composeCtx = null;
 let recordWidth = 1280;
 let recordHeight = 720;
+let activeSourceId = null;
 
 composeCtx = composeCanvas?.getContext('2d');
 if (composeCtx) {
@@ -324,57 +325,39 @@ function getVideoStreamForRecording() {
   return mediaStream;
 }
 
-function desktopVideoConstraints(sourceId, tier = 'basic') {
-  const base = {
-    chromeMediaSource: 'desktop',
-    chromeMediaSourceId: sourceId,
-    maxFrameRate: 30,
-  };
-
-  if (tier === 'target') {
-    return {
-      mandatory: {
-        ...base,
-        maxWidth: recordWidth,
-        maxHeight: recordHeight,
-      },
-    };
-  }
-
-  return { mandatory: base };
-}
-
 function desktopAudioConstraints(sourceId) {
   return {
     mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId },
   };
 }
 
-async function bindPreviewStream(stream) {
-  preview.srcObject = stream;
-  await new Promise((resolve) => {
-    if (preview.readyState >= 1) {
-      resolve();
-      return;
-    }
-    preview.onloadedmetadata = () => resolve();
-    setTimeout(resolve, 1500);
-  });
-  await preview.play().catch(() => {});
-}
-
-async function getDesktopStream(sourceId, videoConstraints, includeSystemAudio) {
-  if (!includeSystemAudio) {
-    return navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
-  }
-  try {
-    return await navigator.mediaDevices.getUserMedia({
-      audio: desktopAudioConstraints(sourceId),
-      video: videoConstraints,
-    });
-  } catch (err) {
-    return navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
-  }
+function videoConstraintAttempts(sourceId) {
+  return [
+    {
+      mandatory: {
+        chromeMediaSource: 'desktop',
+        chromeMediaSourceId: sourceId,
+        minWidth: recordWidth,
+        minHeight: recordHeight,
+        maxWidth: recordWidth,
+        maxHeight: recordHeight,
+        maxFrameRate: 30,
+      },
+    },
+    {
+      mandatory: {
+        chromeMediaSource: 'desktop',
+        chromeMediaSourceId: sourceId,
+        maxFrameRate: 30,
+      },
+    },
+    {
+      mandatory: {
+        chromeMediaSource: 'desktop',
+        chromeMediaSourceId: sourceId,
+      },
+    },
+  ];
 }
 
 async function bindPreviewStream(stream) {
@@ -390,58 +373,81 @@ async function bindPreviewStream(stream) {
   await preview.play().catch(() => {});
 }
 
-async function waitForPreviewFrames(videoEl, timeoutMs = 4000) {
+async function waitForPreviewFrames(videoEl, timeoutMs = 5000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) return true;
-    await new Promise((r) => setTimeout(r, 120));
+    await new Promise((r) => setTimeout(r, 100));
   }
   return false;
 }
 
-async function captureDesktopStreamLegacy(sourceId, includeSystemAudio) {
-  const tiers = ['basic', 'target'];
-  let lastError = null;
+async function captureVideoStream(sourceId) {
+  const errors = [];
 
-  for (const tier of tiers) {
+  for (const video of videoConstraintAttempts(sourceId)) {
     try {
-      const stream = await getDesktopStream(
-        sourceId,
-        desktopVideoConstraints(sourceId, tier),
-        includeSystemAudio && tier === 'basic',
-      );
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video });
       const track = stream?.getVideoTracks()[0];
-      if (track) {
-        logEvent('info', 'Capture ok (legacy)', { tier, label: track.label });
+      if (track && track.readyState === 'live') {
+        logEvent('info', 'Video capture ok', {
+          label: track.label,
+          settings: track.getSettings(),
+        });
         return stream;
       }
+      stream?.getTracks().forEach((t) => t.stop());
     } catch (err) {
-      lastError = err;
-      logEvent('warn', 'Legacy capture failed', { tier, message: err.message });
+      errors.push(err.message);
+      logEvent('warn', 'Capture attempt failed', { message: err.message });
     }
   }
 
-  throw lastError || new Error('Could not capture this source');
-}
-
-async function captureDesktopStream(sourceId, includeSystemAudio) {
-  await window.crownRecord.setCaptureSource(sourceId);
-
   try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: includeSystemAudio,
-    });
+    await window.crownRecord.setCaptureSource(sourceId);
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
     const track = stream?.getVideoTracks()[0];
     if (track) {
-      logEvent('info', 'Capture ok (displayMedia)', { label: track.label });
+      logEvent('info', 'Video capture ok (displayMedia)', { label: track.label });
       return stream;
     }
   } catch (err) {
-    logEvent('warn', 'getDisplayMedia failed', { message: err.message });
+    errors.push(err.message);
+    logEvent('warn', 'displayMedia failed', { message: err.message });
   }
 
-  return captureDesktopStreamLegacy(sourceId, includeSystemAudio);
+  throw new Error(errors[errors.length - 1] || 'Screen capture failed');
+}
+
+async function addSystemAudioTrack(stream, sourceId) {
+  if (!systemAudioEnabled.checked) return false;
+  if (stream.getAudioTracks().some((t) => t.readyState === 'live')) return true;
+
+  try {
+    const audioStream = await navigator.mediaDevices.getUserMedia({
+      audio: desktopAudioConstraints(sourceId),
+      video: false,
+    });
+    const tracks = audioStream.getAudioTracks();
+    if (!tracks.length) return false;
+    tracks.forEach((t) => stream.addTrack(t));
+    return true;
+  } catch (err) {
+    logEvent('warn', 'System audio unavailable', { message: err.message });
+    return false;
+  }
+}
+
+async function captureDesktopStream(sourceId) {
+  activeSourceId = sourceId;
+  const stream = await captureVideoStream(sourceId);
+  await addSystemAudioTrack(stream, sourceId);
+  return stream;
+}
+
+async function ensureSystemAudio() {
+  if (!mediaStream || !activeSourceId) return;
+  await addSystemAudioTrack(mediaStream, activeSourceId);
 }
 
 function formatCaptureStatus(stream, audioNote) {
@@ -645,7 +651,8 @@ async function attachStream(sourceId) {
   applyRecordDimensions();
 
   try {
-    mediaStream = await captureDesktopStream(sourceId, systemAudioEnabled.checked);
+    setStatus('Connecting to source…', '');
+    mediaStream = await captureDesktopStream(sourceId);
     await loadMicDevices();
     const audioNote =
       systemAudioEnabled.checked && mediaStream.getAudioTracks().length
@@ -665,7 +672,7 @@ async function attachStream(sourceId) {
       const hasFrames = await waitForPreviewFrames(preview);
       if (!hasFrames) {
         setStatus(
-          'Preview is black — try Entire screen, or bring the window to the front and refresh.',
+          'Connected but preview is black — try Entire screen, bring window to front, then Refresh.',
           'error',
         );
       } else {
@@ -758,6 +765,7 @@ async function startRecording() {
 
   try {
     await ensureScreenVideo();
+    await ensureSystemAudio();
     if (cameraEnabled.checked) {
       if (!cameraStream) await startCamera();
       await ensureCameraVideo();

@@ -72,6 +72,8 @@ if (isWindows) {
   app.setAppUserModelId('com.crownsoftech.crownrecord');
 }
 
+app.commandLine.appendSwitch('enable-usermedia-screen-capturing');
+
 function applyCaptureExclusion(win) {
   if (!win || win.isDestroyed()) return;
   win.setContentProtection(true);

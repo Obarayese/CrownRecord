@@ -328,9 +328,16 @@ body {
 }
 
 .status {
-  font-size: 0.8rem;
+  position: sticky;
+  bottom: 0;
+  font-size: 0.85rem;
   color: var(--muted);
-  min-height: 1.2em;
+  min-height: 1.4em;
+  padding: 10px 0 4px;
+  margin-top: 8px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  z-index: 20;
 }
 
 .status.error {
