@@ -24,6 +24,7 @@ const CAMERA_IDEAL_HEIGHT = 720;
 const sourceSelect = document.getElementById('source-select');
 const refreshBtn = document.getElementById('refresh-sources');
 const preview = document.getElementById('preview');
+const previewThumb = document.getElementById('preview-thumb');
 const composeCanvas = document.getElementById('compose-canvas');
 const recordBtn = document.getElementById('record-btn');
 const stopBtn = document.getElementById('stop-btn');
@@ -80,6 +81,7 @@ let composeCtx = null;
 let recordWidth = 1280;
 let recordHeight = 720;
 let activeSourceId = null;
+let sourcesCache = [];
 
 composeCtx = composeCanvas?.getContext('2d');
 if (composeCtx) {
@@ -220,13 +222,7 @@ function stopPreviewStream() {
   isPaused = false;
   totalPausedMs = 0;
   stopAudioMixer();
-  mediaStream?.getTracks().forEach((t) => t.stop());
-  mediaStream = null;
-  stopCamera();
-  if (screenVideo) {
-    screenVideo.srcObject = null;
-    screenVideo = null;
-  }
+  releaseLiveCapture();
   preview.srcObject = null;
   showPreviewCanvas(false);
 }
@@ -633,69 +629,56 @@ function populateSourceSelect(sources) {
   addGroup('Application windows', windows);
 }
 
+function releaseLiveCapture() {
+  stopComposeLoop();
+  stopComposedPreviewStream();
+  stopCamera();
+  mediaStream?.getTracks().forEach((t) => t.stop());
+  mediaStream = null;
+  if (screenVideo) {
+    screenVideo.srcObject = null;
+    screenVideo = null;
+  }
+}
+
+function showSourceThumbnail(sourceId) {
+  const source = sourcesCache.find((s) => s.id === sourceId);
+  if (previewThumb && source?.thumbnail) {
+    previewThumb.src = source.thumbnail;
+    previewThumb.hidden = false;
+  }
+  if (composeCanvas) composeCanvas.hidden = true;
+}
+
+function selectSource(sourceId) {
+  if (!sourceId) return;
+  if (!isRecording) releaseLiveCapture();
+  activeSourceId = sourceId;
+  applyRecordDimensions();
+  window.crownRecord.setCaptureSource(sourceId).catch(() => {});
+  showSourceThumbnail(sourceId);
+  const source = sourcesCache.find((s) => s.id === sourceId);
+  recordBtn.disabled = false;
+  setStatus(`Ready — ${source?.label || 'source selected'}. Press Start recording.`, 'ok');
+}
+
 async function loadSources() {
   sourceSelect.disabled = true;
   sourceSelect.innerHTML = '<option value="">Loading…</option>';
   try {
-    const sources = await window.crownRecord.getSources();
-    if (!sources.length) {
+    sourcesCache = await window.crownRecord.getSources();
+    if (!sourcesCache.length) {
       sourceSelect.innerHTML = '<option value="">No sources found</option>';
       setStatus('No capture sources found.', 'error');
       return;
     }
-    populateSourceSelect(sources);
+    populateSourceSelect(sourcesCache);
     sourceSelect.disabled = false;
-    setStatus(`${sources.length} sources — grouped by screen, meetings, and apps.`);
-    await attachStream(sourceSelect.value);
-    if (mediaStream) recordBtn.disabled = false;
+    setStatus(`${sourcesCache.length} sources — pick one, then Start recording.`);
+    selectSource(sourceSelect.value);
   } catch (err) {
     logEvent('error', 'Sources failed', { message: err.message });
     setStatus(`Sources failed: ${err.message}`, 'error');
-  }
-}
-
-async function attachStream(sourceId) {
-  if (!sourceId) return;
-  const wasCameraOn = cameraEnabled.checked;
-  const cameraDevice = cameraSelect.value;
-  stopPreviewStream();
-  cameraEnabled.checked = wasCameraOn;
-  applyRecordDimensions();
-
-  try {
-    setStatus('Connecting to source…', '');
-    mediaStream = await captureDesktopStream(sourceId);
-    await loadMicDevices();
-    const audioNote =
-      systemAudioEnabled.checked && mediaStream.getAudioTracks().length
-        ? ' · system audio on'
-        : systemAudioEnabled.checked
-          ? ' · system audio pending'
-          : '';
-
-    previewHint.textContent =
-      'Live preview below. Pick mic/camera before Record. Use 720p mode if the PC feels slow.';
-
-    if (wasCameraOn) {
-      if (cameraDevice) cameraSelect.value = cameraDevice;
-      await startCamera();
-    } else {
-      await startCanvasPreview();
-      const hasFrames = await waitForPreviewFrames(screenVideo);
-      if (!hasFrames) {
-        setStatus(
-          'Connected but preview is black — try Entire screen, bring window to front, then Refresh.',
-          'error',
-        );
-      } else {
-        setStatus(formatCaptureStatus(mediaStream, audioNote), 'ok');
-      }
-    }
-    recordBtn.disabled = false;
-  } catch (err) {
-    logEvent('error', 'Capture failed', { message: err.message });
-    setStatus(`Capture failed: ${err.message}. Try Entire screen or refresh sources.`, 'error');
-    recordBtn.disabled = true;
   }
 }
 
@@ -713,9 +696,8 @@ async function startCamera() {
     });
     await loadCameraDevices();
     await ensureCameraVideo();
-    await updatePreviewOutput();
     const t = cameraStream.getVideoTracks()[0];
-    setStatus(`Camera: ${t.label || 'active'}`, 'ok');
+    if (!isRecording) setStatus(`Camera: ${t.label || 'active'}`, 'ok');
   } catch (err) {
     cameraEnabled.checked = false;
     setStatus(`Camera unavailable: ${err.message}`, 'error');
@@ -725,17 +707,16 @@ async function startCamera() {
 async function onCameraToggle() {
   if (!cameraEnabled.checked) {
     stopCamera();
-    await updatePreviewOutput();
-    if (mediaStream) setStatus('Camera off — lighter CPU usage.', 'ok');
+    if (activeSourceId) setStatus('Webcam bubble off.', 'ok');
     return;
   }
-  if (!mediaStream) {
+  if (!sourceSelect.value) {
     cameraEnabled.checked = false;
-    setStatus('Pick a source and wait for preview before enabling webcam.', 'error');
+    setStatus('Select a source first.', 'error');
     return;
   }
   await loadCameraDevices();
-  await startCamera();
+  setStatus('Webcam bubble will appear in your recording.', 'ok');
 }
 
 function setRecordingControlsDisabled(disabled) {
@@ -759,7 +740,8 @@ function setRecordingControlsDisabled(disabled) {
 }
 
 async function startRecording() {
-  if (!mediaStream) {
+  const sourceId = sourceSelect.value;
+  if (!sourceId) {
     setStatus('Select a source first.', 'error');
     return;
   }
@@ -776,16 +758,30 @@ async function startRecording() {
   updateRecordingPreviewUi();
 
   try {
-    await ensureScreenVideo();
-    await ensureSystemAudio();
+    setStatus('Starting capture…', '');
+    releaseLiveCapture();
+    activeSourceId = sourceId;
+    mediaStream = await captureDesktopStream(sourceId);
+    await loadMicDevices();
+    await addSystemAudioTrack(mediaStream, sourceId);
+
     if (cameraEnabled.checked) {
-      if (!cameraStream) await startCamera();
+      await startCamera();
+      await ensureScreenVideo();
       await ensureCameraVideo();
+      if (!composeRafId) drawComposeFrame();
     }
-    await updatePreviewOutput();
+
+    const audioNote =
+      systemAudioEnabled.checked && mediaStream.getAudioTracks().length
+        ? ' · system audio on'
+        : '';
+    setStatus(formatCaptureStatus(mediaStream, audioNote), 'ok');
   } catch (err) {
     isRecording = false;
-    setStatus(`Setup failed: ${err.message}`, 'error');
+    releaseLiveCapture();
+    if (sourceSelect.value) selectSource(sourceSelect.value);
+    setStatus(`Capture failed: ${err.message}`, 'error');
     return;
   }
 
@@ -794,7 +790,8 @@ async function startRecording() {
     streamForRecorder = await buildRecordingStream();
   } catch (err) {
     isRecording = false;
-    await updatePreviewOutput();
+    releaseLiveCapture();
+    if (sourceSelect.value) selectSource(sourceSelect.value);
     setStatus(err.message, 'error');
     return;
   }
@@ -811,7 +808,8 @@ async function startRecording() {
   } catch (err) {
     isRecording = false;
     stopAudioMixer();
-    await updatePreviewOutput();
+    releaseLiveCapture();
+    if (sourceSelect.value) selectSource(sourceSelect.value);
     setStatus(`MediaRecorder error: ${err.message}`, 'error');
     return;
   }
@@ -829,8 +827,9 @@ async function startRecording() {
     pushHud(false);
     await window.crownRecord.closeCameraMirror();
     stopAudioMixer();
+    releaseLiveCapture();
     await window.crownRecord.restoreMainWindow();
-    await updatePreviewOutput();
+    if (sourceSelect.value) selectSource(sourceSelect.value);
     setRecordingControlsDisabled(false);
     recordBtn.disabled = false;
     stopBtn.disabled = true;
@@ -915,16 +914,20 @@ navigator.mediaDevices.addEventListener('devicechange', async () => {
   }
 });
 
-sourceSelect.addEventListener('change', () => attachStream(sourceSelect.value));
+sourceSelect.addEventListener('change', () => selectSource(sourceSelect.value));
 refreshBtn.addEventListener('click', loadSources);
 recordBtn.addEventListener('click', startRecording);
 stopBtn.addEventListener('click', stopRecording);
 cameraEnabled.addEventListener('change', onCameraToggle);
-cameraSelect.addEventListener('change', () => { if (cameraEnabled.checked) startCamera(); });
+cameraSelect.addEventListener('change', () => {
+  if (isRecording && cameraEnabled.checked) startCamera();
+});
 bubbleSize?.addEventListener('input', () => { bubbleSizeVal.textContent = bubbleSize.value; });
-systemAudioEnabled.addEventListener('change', () => { if (sourceSelect.value) attachStream(sourceSelect.value); });
+systemAudioEnabled.addEventListener('change', () => {
+  if (isRecording) setStatus('System audio applies on next recording.', '');
+});
 qualityMode?.addEventListener('change', () => {
-  if (sourceSelect.value && !isRecording) attachStream(sourceSelect.value);
+  if (!isRecording) applyRecordDimensions();
 });
 voiceBoost?.addEventListener('input', () => { voiceBoostVal.textContent = voiceBoost.value; });
 refreshDevicesBtn?.addEventListener('click', () => refreshAllDevices(true));

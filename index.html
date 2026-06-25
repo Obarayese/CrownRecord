@@ -31,12 +31,13 @@
 
   <section class="panel preview-panel" id="preview-panel">
     <div class="preview-head">
-      <h2 class="meetings-title">Live preview</h2>
+      <h2 class="meetings-title">Source preview</h2>
       <span id="preview-badge" class="preview-badge" hidden>Recording</span>
     </div>
+    <img id="preview-thumb" class="preview-thumb" alt="Selected source preview" />
     <video id="preview" hidden muted playsinline aria-hidden="true"></video>
-    <canvas id="compose-canvas" aria-label="Live preview"></canvas>
-    <p id="preview-hint" class="hint">Pick a source below. Webcam bubble (when on) appears here and in your saved video at 30fps.</p>
+    <canvas id="compose-canvas" hidden aria-hidden="true"></canvas>
+    <p id="preview-hint" class="hint">Snapshot of your pick — live capture starts when you press Start recording (keeps the app stable).</p>
   </section>
 
   <section class="panel audio-panel">

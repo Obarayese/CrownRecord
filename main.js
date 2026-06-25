@@ -12,6 +12,9 @@ const path = require('path');
 const fs = require('fs');
 const logger = require('./logger');
 
+// Avoids GPU/desktop-capture renderer crashes on some Windows PCs.
+app.disableHardwareAcceleration();
+
 let mainWindow = null;
 let teleprompterWindow = null;
 let hudWindow = null;
@@ -246,14 +249,6 @@ function createMainWindow() {
 
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
     logger.error('Renderer process gone', details);
-    if (
-      details.reason === 'crashed' &&
-      mainWindow &&
-      !mainWindow.isDestroyed() &&
-      !isQuitting
-    ) {
-      mainWindow.reload();
-    }
   });
 
   mainWindow.once('ready-to-show', () => {
