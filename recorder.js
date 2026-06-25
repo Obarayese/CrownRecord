@@ -184,7 +184,9 @@ function stopMic() {
 
 function stopAudioMixer() {
   stopMic();
-  if (audioContext?.state !== 'closed') audioContext.close().catch(() => {});
+  if (audioContext && audioContext.state !== 'closed') {
+    audioContext.close().catch(() => {});
+  }
   audioContext = null;
   recordingAVStream = null;
 }
