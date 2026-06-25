@@ -228,6 +228,12 @@ function stopPreviewStream() {
     screenVideo = null;
   }
   preview.srcObject = null;
+  showPreviewCanvas(false);
+}
+
+function showPreviewCanvas(visible) {
+  if (composeCanvas) composeCanvas.hidden = !visible;
+  if (preview) preview.hidden = true;
 }
 
 function getBubbleGeometry() {
@@ -266,6 +272,22 @@ function drawCameraBubble() {
   composeCtx.scale(-1, 1);
   composeCtx.drawImage(cameraVideo, -(vw * cover) / 2, -(vh * cover) / 2, vw * cover, vh * cover);
   composeCtx.restore();
+}
+
+function drawScreenPreviewFrame() {
+  if (!mediaStream || needsCompositor()) {
+    composeRafId = null;
+    return;
+  }
+  const vw = screenVideo?.videoWidth || 0;
+  const vh = screenVideo?.videoHeight || 0;
+  if (vw && vh) {
+    composeCtx.drawImage(screenVideo, 0, 0, composeCanvas.width, composeCanvas.height);
+  } else {
+    composeCtx.fillStyle = '#000';
+    composeCtx.fillRect(0, 0, composeCanvas.width, composeCanvas.height);
+  }
+  composeRafId = requestAnimationFrame(drawScreenPreviewFrame);
 }
 
 function drawComposeFrame() {
@@ -362,17 +384,16 @@ function videoConstraintAttempts(sourceId) {
   ];
 }
 
-async function bindPreviewStream(stream) {
-  preview.srcObject = stream;
-  await new Promise((resolve) => {
-    if (preview.readyState >= 1) {
-      resolve();
-      return;
-    }
-    preview.onloadedmetadata = () => resolve();
-    setTimeout(resolve, 2000);
-  });
-  await preview.play().catch(() => {});
+async function startCanvasPreview() {
+  await ensureScreenVideo();
+  showPreviewCanvas(true);
+  stopComposeLoop();
+  if (needsCompositor()) {
+    if (cameraStream) await ensureCameraVideo();
+    if (!composeRafId) drawComposeFrame();
+  } else if (!composeRafId) {
+    drawScreenPreviewFrame();
+  }
 }
 
 async function waitForPreviewFrames(videoEl, timeoutMs = 5000) {
@@ -581,18 +602,7 @@ async function buildRecordingStream() {
 
 async function updatePreviewOutput() {
   if (!mediaStream) return;
-  await ensureScreenVideo();
-
-  if (needsCompositor()) {
-    ensureComposedStream();
-    if (!composeRafId) drawComposeFrame();
-    preview.srcObject = composedPreviewStream;
-    await preview.play().catch(() => {});
-  } else {
-    stopComposeLoop();
-    stopComposedPreviewStream();
-    await bindPreviewStream(mediaStream);
-  }
+  await startCanvasPreview();
   updateRecordingPreviewUi();
 }
 
@@ -670,8 +680,8 @@ async function attachStream(sourceId) {
       if (cameraDevice) cameraSelect.value = cameraDevice;
       await startCamera();
     } else {
-      await bindPreviewStream(mediaStream);
-      const hasFrames = await waitForPreviewFrames(preview);
+      await startCanvasPreview();
+      const hasFrames = await waitForPreviewFrames(screenVideo);
       if (!hasFrames) {
         setStatus(
           'Connected but preview is black — try Entire screen, bring window to front, then Refresh.',

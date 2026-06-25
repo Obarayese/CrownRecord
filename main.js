@@ -234,6 +234,8 @@ function createMainWindow() {
     title: 'CrownRecord',
     icon: appIcon,
     autoHideMenuBar: true,
+    backgroundColor: '#0f1117',
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload-main.js'),
       contextIsolation: true,
@@ -244,6 +246,22 @@ function createMainWindow() {
 
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
     logger.error('Renderer process gone', details);
+    if (
+      details.reason === 'crashed' &&
+      mainWindow &&
+      !mainWindow.isDestroyed() &&
+      !isQuitting
+    ) {
+      mainWindow.reload();
+    }
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    logger.error('Page failed to load', { code, desc, url });
   });
 
   mainWindow.loadFile('index.html');

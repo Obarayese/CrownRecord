@@ -1,6 +1,6 @@
 {
   "name": "crownrecord",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "CrownRecord — free Windows screen recorder by Crown Softech",
   "main": "main.js",
   "author": "Crown Softech <support@crownsoftech.com>",
