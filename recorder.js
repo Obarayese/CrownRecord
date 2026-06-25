@@ -171,11 +171,11 @@ function updateRecordingPreviewUi() {
   if (previewBadge) previewBadge.hidden = !isRecording;
   if (previewHint && isRecording) {
     previewHint.textContent = needsCompositor()
-      ? 'Recording at full quality — bubble is in the saved file. Live preview here if the window is open.'
-      : 'Recording at full quality — screen only (lighter on CPU).';
-  } else if (previewHint && !isRecording && needsCompositor()) {
+      ? 'Recording — bubble is in your saved video. Floating mirror shows your face when minimized.'
+      : 'Recording — live preview below. Saved file matches what you see here.';
+  } else if (previewHint && !isRecording) {
     previewHint.textContent =
-      'Webcam bubble shows here and will be burned into your saved video at 30fps.';
+      'Snapshot until you record. Turn on webcam bubble before Start — it appears in the live preview and saved video.';
   }
 }
 
@@ -230,6 +230,25 @@ function stopPreviewStream() {
 function showPreviewCanvas(visible) {
   if (composeCanvas) composeCanvas.hidden = !visible;
   if (preview) preview.hidden = true;
+  if (previewThumb) previewThumb.hidden = visible;
+}
+
+async function startRecordingPreview() {
+  if (previewThumb) previewThumb.hidden = true;
+  showPreviewCanvas(true);
+  stopComposeLoop();
+  await ensureScreenVideo();
+  const hasScreen = await waitForPreviewFrames(screenVideo, 4000);
+  if (!hasScreen) {
+    logEvent('warn', 'Screen frames slow to start', {});
+  }
+  if (needsCompositor()) {
+    await ensureCameraVideo();
+    await waitForPreviewFrames(cameraVideo, 3000);
+    if (!composeRafId) drawComposeFrame();
+  } else if (!composeRafId) {
+    drawScreenPreviewFrame();
+  }
 }
 
 function getBubbleGeometry() {
@@ -767,9 +786,12 @@ async function startRecording() {
 
     if (cameraEnabled.checked) {
       await startCamera();
-      await ensureScreenVideo();
-      await ensureCameraVideo();
-      if (!composeRafId) drawComposeFrame();
+    }
+
+    await startRecordingPreview();
+
+    if (cameraEnabled.checked && needsCompositor()) {
+      ensureComposedStream();
     }
 
     const audioNote =
@@ -856,7 +878,6 @@ async function startRecording() {
   stopBtn.disabled = false;
 
   if (minimizeOnRecord?.checked !== false) {
-    await window.crownRecord.minimizeMainWindow();
     if (cameraEnabled.checked && cameraStream) {
       await window.crownRecord.openCameraMirror({
         deviceId: cameraSelect.value || '',
@@ -864,6 +885,7 @@ async function startRecording() {
         corner: bubbleCorner.value,
       });
     }
+    await window.crownRecord.minimizeMainWindow();
   }
 
   logEvent('info', 'Recording started', { mimeType, quality: qualityMode?.value });
